@@ -156,8 +156,10 @@ def audit_source(
 DB_PATH = app_config.DATABASE_PATH
 
 
+TIMEZONE_NAME = app_config.TIMEZONE
+
 MOSCOW = ZoneInfo(
-    app_config.TIMEZONE
+    TIMEZONE_NAME
 )
 
 POLL_INTERVAL = 15
@@ -817,104 +819,12 @@ def ensure_schedule_rules_schema():
         """)
 
 
-        marker = conn.execute("""
-            SELECT value
+        # Public installations start with no schedule rules.
+        #
+        # The global scheduler is disabled by default and
+        # administrators create the rules appropriate for
+        # their own environment.
 
-            FROM settings
-
-            WHERE key=
-                'schedule_rules_initialized'
-        """).fetchone()
-
-
-        if not marker:
-
-            now_epoch = int(
-                time.time()
-            )
-
-
-            # Existing production behaviour:
-            #
-            # MON-FRI 07:00 -> PAUSE
-            # MON-FRI 21:00 -> RESUME
-            #
-            # effective_from=0 is intentional:
-            # these are migrated historical rules.
-
-            conn.execute("""
-                INSERT INTO schedule_rules
-                (
-                    enabled,
-                    action,
-                    time_minutes,
-                    days_mask,
-                    scope,
-                    comment,
-                    effective_from,
-                    created_at,
-                    updated_at
-                )
-
-                VALUES (
-                    1,
-                    'PAUSE',
-                    420,
-                    31,
-                    'SCHEDULED',
-                    'Morning pause',
-                    0,
-                    ?,
-                    ?
-                )
-            """, (
-                now_epoch,
-                now_epoch,
-            ))
-
-
-            conn.execute("""
-                INSERT INTO schedule_rules
-                (
-                    enabled,
-                    action,
-                    time_minutes,
-                    days_mask,
-                    scope,
-                    comment,
-                    effective_from,
-                    created_at,
-                    updated_at
-                )
-
-                VALUES (
-                    1,
-                    'RESUME',
-                    1260,
-                    31,
-                    'SCHEDULED',
-                    'Evening resume',
-                    0,
-                    ?,
-                    ?
-                )
-            """, (
-                now_epoch,
-                now_epoch,
-            ))
-
-
-            conn.execute("""
-                INSERT INTO settings(
-                    key,
-                    value
-                )
-
-                VALUES (
-                    'schedule_rules_initialized',
-                    '1'
-                )
-            """)
 
 
         conn.commit()
@@ -1415,8 +1325,14 @@ def schedule_rule_dict(
 
         "next_run_label":
             (
-                next_run.strftime(
-                    "%a %d.%m %H:%M MSK"
+                (
+                    next_run.strftime(
+                        "%a %d.%m %H:%M"
+                    )
+                    +
+                    " "
+                    +
+                    TIMEZONE_NAME
                 )
                 if next_run
                 else None
@@ -3435,7 +3351,7 @@ def telegram_format_event(
         datetime.now(
             MOSCOW
         ).strftime(
-            "%Y-%m-%d %H:%M:%S MSK"
+            "%Y-%m-%d %H:%M:%S %Z"
         )
     )
 
@@ -6940,7 +6856,7 @@ def api_remote_web_authorize(
 def health():
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": "0.1.1",
         "time":
             datetime.now(
                 MOSCOW
@@ -7143,7 +7059,7 @@ def api_status():
         })
 
     return {
-        "version": "0.1.0",
+        "version": "0.1.1",
 
         "now":
             now.isoformat(),
@@ -7224,7 +7140,7 @@ def api_schedule_rules():
 
     return {
         "timezone":
-            "Europe/Moscow",
+            TIMEZONE_NAME,
 
         "scheduler_enabled":
             (
@@ -7259,8 +7175,14 @@ def api_schedule_rules():
 
         "next_transition_label":
             (
-                upcoming.strftime(
-                    "%a %d.%m %H:%M MSK"
+                (
+                    upcoming.strftime(
+                        "%a %d.%m %H:%M"
+                    )
+                    +
+                    " "
+                    +
+                    TIMEZONE_NAME
                 )
                 if upcoming
                 else None
@@ -9587,7 +9509,7 @@ def telegram_farm_summary():
             "Time: "
             +
             now.strftime(
-                "%Y-%m-%d %H:%M:%S MSK"
+                "%Y-%m-%d %H:%M:%S %Z"
             )
         ),
         "",
@@ -10011,8 +9933,10 @@ def api_notification_summary_status():
             (
                 f"{TELEGRAM_SUMMARY_HOUR:02d}:"
                 f"{TELEGRAM_SUMMARY_MINUTE:02d}"
-                " MSK"
             ),
+
+        "timezone":
+            TIMEZONE_NAME,
 
         "window_minutes":
             TELEGRAM_SUMMARY_WINDOW_MINUTES,
@@ -10296,7 +10220,7 @@ def api_notifications_test():
         datetime.now(
             MOSCOW
         ).strftime(
-            "%Y-%m-%d %H:%M:%S MSK"
+            "%Y-%m-%d %H:%M:%S %Z"
         )
     )
 
@@ -12606,7 +12530,7 @@ a:hover {
         <h1>
             OpenASICManager
             <span class="muted small">
-                <span id="appVersion">v0.1.0</span>
+                <span id="appVersion">v0.1.1</span>
             </span>
         </h1>
 
@@ -13301,7 +13225,10 @@ a:hover {
             class="muted small"
             style="margin-top:5px"
         >
-            Europe/Moscow (MSK).
+            Scheduler timezone:
+            <span id="scheduleTimezone">
+                configured
+            </span>.
             Rules apply only to enabled ASICs
             with Schedule = ON.
         </div>
@@ -13517,7 +13444,7 @@ a:hover {
 
             <div class="muted">
                 Automatic ASIC state transition
-                in Europe/Moscow timezone
+                in the configured timezone
             </div>
 
         </div>
@@ -13559,7 +13486,7 @@ a:hover {
         <div class="schedule-rule-field">
 
             <label for="scheduleRuleTime">
-                Time (MSK)
+                Time
             </label>
 
             <input
@@ -19056,6 +18983,21 @@ async function loadStatus() {
                 data.now
             ).toLocaleString();
 
+        const scheduleTimezone =
+            document.getElementById(
+                "scheduleTimezone"
+            );
+
+        if (scheduleTimezone) {
+
+            scheduleTimezone.textContent =
+                data.timezone
+                ||
+                "configured";
+
+        }
+
+
         document.getElementById(
             "desiredState"
         ).textContent =
@@ -19077,7 +19019,7 @@ async function loadStatus() {
                         "en-GB",
                         {
                             timeZone:
-                                "Europe/Moscow",
+                                data.timezone,
 
                             day:
                                 "2-digit",
@@ -19096,7 +19038,9 @@ async function loadStatus() {
                         }
                     )
                     +
-                    " MSK"
+                    " "
+                    +
+                    data.timezone
                 )
                 :
                 "—"

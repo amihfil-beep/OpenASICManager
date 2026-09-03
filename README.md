@@ -17,7 +17,7 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 
 ## Current release
 
-**0.1.0**
+**0.1.1**
 
 This is the first public release.
 

@@ -2,6 +2,20 @@
 
 All notable changes to OpenASICManager will be documented in this file.
 
+## [0.1.1] - 2026-09-03
+
+First public release candidate after fresh-install review.
+
+### Fixed
+
+- New installations no longer receive farm-specific scheduler rules.
+- Global scheduler remains disabled on a clean installation.
+- Fixed first-run nginx Basic Auth password-file creation.
+- Replaced placeholder Git clone command with the real repository URL.
+- Fixed Remote Web cookie-domain example.
+- Removed hardcoded Europe/Moscow and MSK scheduler labels from the public application.
+- Scheduler UI and API now use the configured application timezone.
+
 ## [0.1.0] - 2026-09-03
 
 Initial public release.

@@ -12,8 +12,8 @@ Primary development platform:
 
 Example:
 
-    git clone <repository-url>
-    cd openasicmanager
+    git clone https://github.com/amihfil-beep/OpenASICManager.git
+    cd OpenASICManager
 
 ## 2. Install
 

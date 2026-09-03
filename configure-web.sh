@@ -171,9 +171,20 @@ echo "Create/update password for:"
 echo "  $AUTH_USER"
 echo
 
-htpasswd \
-    "$HTPASSWD" \
-    "$AUTH_USER"
+if [ -f "$HTPASSWD" ]; then
+
+    htpasswd \
+        "$HTPASSWD" \
+        "$AUTH_USER"
+
+else
+
+    htpasswd \
+        -c \
+        "$HTPASSWD" \
+        "$AUTH_USER"
+
+fi
 
 chmod 0640 \
     "$HTPASSWD"

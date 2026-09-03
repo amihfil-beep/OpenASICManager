@@ -1,0 +1,821 @@
+#!/usr/bin/env python3
+
+import argparse
+import ipaddress
+import os
+import shlex
+import sqlite3
+import subprocess
+import sys
+import tempfile
+
+from pathlib import Path
+
+
+# ============================================================
+# PROJECT
+# ============================================================
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parent
+    .parent
+)
+
+APP_DIR = (
+    PROJECT_ROOT
+    /
+    "app"
+)
+
+
+# ============================================================
+# LOAD SIMPLE ENV FILE
+# ============================================================
+
+def load_env_file(
+    path,
+):
+
+    path = Path(
+        path
+    )
+
+
+    if not path.is_file():
+        return
+
+
+    for raw in path.read_text(
+        encoding="utf-8"
+    ).splitlines():
+
+        line = raw.strip()
+
+
+        if (
+            not line
+            or
+            line.startswith("#")
+            or
+            "=" not in line
+        ):
+            continue
+
+
+        key, value = line.split(
+            "=",
+            1,
+        )
+
+
+        key = key.strip()
+        value = value.strip()
+
+
+        if (
+            len(value) >= 2
+            and
+            value[0] == value[-1]
+            and
+            value[0] in (
+                '"',
+                "'",
+            )
+        ):
+
+            value = value[
+                1:-1
+            ]
+
+
+        if key:
+
+            os.environ.setdefault(
+                key,
+                value,
+            )
+
+
+ENV_FILE = os.getenv(
+    "OPENASICMANAGER_ENV",
+    "/etc/openasicmanager/openasicmanager.env",
+)
+
+load_env_file(
+    ENV_FILE
+)
+
+
+sys.path.insert(
+    0,
+    str(APP_DIR),
+)
+
+
+from config import (
+    DATABASE_PATH,
+    PUBLIC_DOMAIN,
+    REMOTE_WEB_ENABLED,
+    REMOTE_WEB_BASE_DOMAIN,
+    REMOTE_WEB_ALLOWED_CIDR,
+    REMOTE_WEB_SECRET,
+    REMOTE_WEB_CERT,
+    REMOTE_WEB_KEY,
+)
+
+from remote_web import (
+    remote_host_for_ip,
+)
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def require_domain(
+    value,
+    name,
+):
+
+    value = str(
+        value
+        or ""
+    ).strip().lower().strip(".")
+
+
+    if (
+        not value
+        or
+        " " in value
+        or
+        "/" in value
+    ):
+
+        raise RuntimeError(
+            f"Invalid {name}: "
+            f"{value!r}"
+        )
+
+
+    return value
+
+
+def load_miners():
+
+    db_path = Path(
+        DATABASE_PATH
+    )
+
+
+    if not db_path.is_file():
+
+        raise RuntimeError(
+            "Database does not exist: "
+            +
+            str(db_path)
+        )
+
+
+    conn = sqlite3.connect(
+        str(db_path),
+        timeout=20,
+    )
+
+    conn.row_factory = (
+        sqlite3.Row
+    )
+
+
+    try:
+
+        rows = conn.execute("""
+            SELECT
+                id,
+                name,
+                ip,
+                driver,
+                enabled
+
+            FROM miners
+
+            WHERE driver != 'unset'
+
+            ORDER BY id
+        """).fetchall()
+
+    finally:
+
+        conn.close()
+
+
+    return rows
+
+
+# ============================================================
+# NGINX
+# ============================================================
+
+def render():
+
+    if not REMOTE_WEB_ENABLED:
+
+        return (
+            "# OpenASICManager Remote Web is disabled.\n"
+        )
+
+
+    public_domain = require_domain(
+        PUBLIC_DOMAIN,
+        "PUBLIC_DOMAIN",
+    )
+
+    base_domain = require_domain(
+        REMOTE_WEB_BASE_DOMAIN,
+        "REMOTE_WEB_BASE_DOMAIN",
+    )
+
+
+    if len(
+        REMOTE_WEB_SECRET
+    ) < 32:
+
+        raise RuntimeError(
+            "REMOTE_WEB_SECRET must contain "
+            "at least 32 characters"
+        )
+
+
+    try:
+
+        network = ipaddress.ip_network(
+            REMOTE_WEB_ALLOWED_CIDR,
+            strict=False,
+        )
+
+    except ValueError as exc:
+
+        raise RuntimeError(
+            "Invalid REMOTE_WEB_ALLOWED_CIDR: "
+            +
+            str(exc)
+        )
+
+
+    if network.version != 4:
+
+        raise RuntimeError(
+            "Remote Web currently supports IPv4"
+        )
+
+
+    miners = load_miners()
+
+
+    devices = []
+
+
+    for row in miners:
+
+        host = remote_host_for_ip(
+            row["ip"],
+            network,
+            base_domain,
+        )
+
+
+        if not host:
+            continue
+
+
+        devices.append({
+            "id":
+                row["id"],
+
+            "name":
+                row["name"],
+
+            "ip":
+                str(
+                    ipaddress.ip_address(
+                        row["ip"]
+                    )
+                ),
+
+            "host":
+                host,
+        })
+
+
+    if not devices:
+
+        return (
+            "# OpenASICManager Remote Web enabled, "
+            "but no managed ASICs are inside "
+            "REMOTE_WEB_ALLOWED_CIDR.\n"
+        )
+
+
+    cert = Path(
+        REMOTE_WEB_CERT
+    ) if REMOTE_WEB_CERT else None
+
+    key = Path(
+        REMOTE_WEB_KEY
+    ) if REMOTE_WEB_KEY else None
+
+
+    tls_ready = bool(
+        cert
+        and
+        key
+        and
+        cert.is_file()
+        and
+        key.is_file()
+    )
+
+
+    hosts = " ".join(
+        item["host"]
+        for item in devices
+    )
+
+
+    output = []
+
+
+    output.append(
+        "# ========================================================"
+    )
+
+    output.append(
+        "# OpenASICManager Remote ASIC Web"
+    )
+
+    output.append(
+        "# GENERATED FILE - DO NOT EDIT MANUALLY"
+    )
+
+    output.append(
+        "# ========================================================"
+    )
+
+    output.append("")
+
+
+    # --------------------------------------------------------
+    # HTTP / ACME
+    # --------------------------------------------------------
+
+    output.extend([
+        "server {",
+        "    listen 80;",
+        "    listen [::]:80;",
+        "",
+        f"    server_name {hosts};",
+        "",
+        "    location ^~ /.well-known/acme-challenge/ {",
+        "        root /var/www/letsencrypt;",
+        "        default_type text/plain;",
+        "    }",
+        "",
+    ])
+
+
+    if tls_ready:
+
+        output.extend([
+            "    location / {",
+            "        return 301 https://$host$request_uri;",
+            "    }",
+        ])
+
+    else:
+
+        output.extend([
+            "    location / {",
+            f"        return 302 https://{public_domain}/;",
+            "    }",
+        ])
+
+
+    output.extend([
+        "}",
+        "",
+    ])
+
+
+    # --------------------------------------------------------
+    # HTTPS blocks
+    # --------------------------------------------------------
+
+    if not tls_ready:
+
+        output.extend([
+            "# HTTPS blocks were not generated because",
+            "# REMOTE_WEB_CERT / REMOTE_WEB_KEY are absent",
+            "# or the configured files do not exist.",
+            "",
+        ])
+
+        return (
+            "\n".join(output)
+            +
+            "\n"
+        )
+
+
+    for item in devices:
+
+        ip = item[
+            "ip"
+        ]
+
+        host = item[
+            "host"
+        ]
+
+        miner_id = item[
+            "id"
+        ]
+
+        name = str(
+            item["name"]
+            or ""
+        ).replace(
+            "\n",
+            " ",
+        )
+
+
+        output.extend([
+            "# --------------------------------------------------------",
+            f"# ASIC #{miner_id}: {name}",
+            f"# {ip}",
+            "# --------------------------------------------------------",
+            "",
+            "server {",
+            "    listen 443 ssl;",
+            "    listen [::]:443 ssl;",
+            "",
+            f"    server_name {host};",
+            "",
+            "    server_tokens off;",
+            "",
+            f"    ssl_certificate {cert};",
+            f"    ssl_certificate_key {key};",
+            "",
+            "    ssl_protocols TLSv1.2 TLSv1.3;",
+            "",
+            "",
+            "    location = /_asic_remote_auth {",
+            "",
+            "        internal;",
+            "",
+            "        proxy_pass",
+            "            http://127.0.0.1:8088/api/remote/authorize;",
+            "",
+            "        proxy_pass_request_body off;",
+            "",
+            "        proxy_set_header Content-Length \"\";",
+            "        proxy_set_header X-Remote-Host $host;",
+            "        proxy_set_header Cookie $http_cookie;",
+            "",
+            "        # Never forward miner Digest credentials",
+            "        # to the OpenASICManager auth endpoint.",
+            "        proxy_set_header Authorization \"\";",
+            "    }",
+            "",
+            "",
+            "    location / {",
+            "",
+            "        auth_request /_asic_remote_auth;",
+            "",
+            "        error_page 401 = @remote_login;",
+            "",
+            f"        proxy_pass http://{ip};",
+            "",
+            "        proxy_http_version 1.1;",
+            "",
+            "        proxy_set_header Host $host;",
+            "        proxy_set_header X-Forwarded-Host $host;",
+            "        proxy_set_header X-Forwarded-Proto https;",
+            "        proxy_set_header X-Real-IP $remote_addr;",
+            "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+            "",
+            "        # Required for Bitmain Digest authentication.",
+            "        proxy_set_header Authorization $http_authorization;",
+            "",
+            "        proxy_connect_timeout 10s;",
+            "        proxy_send_timeout 60s;",
+            "        proxy_read_timeout 60s;",
+            "",
+            "        proxy_buffering off;",
+            "        proxy_intercept_errors off;",
+            "",
+            "        proxy_redirect",
+            f"            http://{ip}/",
+            f"            https://{host}/;",
+            "",
+            "        proxy_cookie_domain",
+            f"            {ip}",
+            f"            {host};",
+            "",
+            "        proxy_cookie_path / /;",
+            "    }",
+            "",
+            "",
+            "    location @remote_login {",
+            "",
+            f"        return 302 https://{public_domain}/;",
+            "    }",
+            "}",
+            "",
+        ])
+
+
+    return (
+        "\n".join(output)
+        +
+        "\n"
+    )
+
+
+# ============================================================
+# APPLY
+# ============================================================
+
+def apply_config(
+    content,
+    output_path,
+    reload_nginx,
+):
+
+    output_path = Path(
+        output_path
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+
+    previous = None
+
+
+    if output_path.exists():
+
+        previous = output_path.read_bytes()
+
+
+    fd, temporary_name = (
+        tempfile.mkstemp(
+            prefix=(
+                output_path.name
+                +
+                "."
+            ),
+            dir=str(
+                output_path.parent
+            ),
+        )
+    )
+
+
+    try:
+
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+        ) as handle:
+
+            handle.write(
+                content
+            )
+
+
+        os.chmod(
+            temporary_name,
+            0o644,
+        )
+
+
+        os.replace(
+            temporary_name,
+            output_path,
+        )
+
+
+        check = subprocess.run(
+            [
+                "nginx",
+                "-t",
+            ],
+            text=True,
+            capture_output=True,
+        )
+
+
+        if check.returncode != 0:
+
+            if previous is None:
+
+                output_path.unlink(
+                    missing_ok=True
+                )
+
+            else:
+
+                output_path.write_bytes(
+                    previous
+                )
+
+
+            raise RuntimeError(
+                "nginx -t failed:\n"
+                +
+                check.stdout
+                +
+                check.stderr
+            )
+
+
+        # Enable generated site when the target is located
+        # inside nginx sites-available.
+        if (
+            output_path.parent
+            ==
+            Path("/etc/nginx/sites-available")
+        ):
+
+            enabled_dir = Path(
+                "/etc/nginx/sites-enabled"
+            )
+
+            enabled_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            enabled_link = (
+                enabled_dir
+                /
+                output_path.name
+            )
+
+            if (
+                enabled_link.exists()
+                or
+                enabled_link.is_symlink()
+            ):
+                enabled_link.unlink()
+
+            enabled_link.symlink_to(
+                output_path
+            )
+
+
+            check = subprocess.run(
+                [
+                    "nginx",
+                    "-t",
+                ],
+                text=True,
+                capture_output=True,
+            )
+
+
+            if check.returncode != 0:
+
+                enabled_link.unlink(
+                    missing_ok=True
+                )
+
+                if previous is None:
+
+                    output_path.unlink(
+                        missing_ok=True
+                    )
+
+                else:
+
+                    output_path.write_bytes(
+                        previous
+                    )
+
+                raise RuntimeError(
+                    "nginx -t failed after enabling site:\n"
+                    +
+                    check.stdout
+                    +
+                    check.stderr
+                )
+
+
+        if reload_nginx:
+
+            subprocess.run(
+                [
+                    "systemctl",
+                    "reload",
+                    "nginx",
+                ],
+                check=True,
+            )
+
+
+    finally:
+
+        try:
+
+            Path(
+                temporary_name
+            ).unlink()
+
+        except FileNotFoundError:
+            pass
+
+
+# ============================================================
+# CLI
+# ============================================================
+
+def main():
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate nginx configuration "
+            "for OpenASICManager Remote Web"
+        )
+    )
+
+
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help=(
+            "Print generated configuration "
+            "instead of installing it"
+        ),
+    )
+
+
+    parser.add_argument(
+        "--output",
+        default=(
+            "/etc/nginx/sites-available/"
+            "openasicmanager-remote"
+        ),
+        help=(
+            "Target nginx configuration path"
+        ),
+    )
+
+
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help=(
+            "Write config, run nginx -t "
+            "and reload nginx"
+        ),
+    )
+
+
+    args = parser.parse_args()
+
+
+    content = render()
+
+
+    if (
+        args.stdout
+        or
+        not args.apply
+    ):
+
+        sys.stdout.write(
+            content
+        )
+
+
+    if args.apply:
+
+        apply_config(
+            content,
+            args.output,
+            reload_nginx=True,
+        )
+
+        print(
+            "Remote Web nginx configuration applied.",
+            file=sys.stderr,
+        )
+
+
+if __name__ == "__main__":
+    main()

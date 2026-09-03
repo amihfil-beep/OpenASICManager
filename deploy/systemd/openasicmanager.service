@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenASICManager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+User=openasicmanager
+Group=openasicmanager
+
+WorkingDirectory=/opt/openasicmanager/app
+
+EnvironmentFile=-/etc/openasicmanager/openasicmanager.env
+
+ExecStart=/opt/openasicmanager/venv/bin/uvicorn \
+    app:app \
+    --host 127.0.0.1 \
+    --port 8088 \
+    --workers 1
+
+Restart=on-failure
+RestartSec=5
+
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+ReadWritePaths=/var/lib/openasicmanager
+
+[Install]
+WantedBy=multi-user.target

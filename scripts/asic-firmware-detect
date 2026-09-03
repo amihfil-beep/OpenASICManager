@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+
+import sqlite3
+import sys
+import time
+
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+)
+
+
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(
+    __file__
+).resolve().parent.parent
+
+APP_DIR = (
+    PROJECT_ROOT
+    /
+    "app"
+)
+
+sys.path.insert(
+    0,
+    str(APP_DIR),
+)
+
+from discovery import detect_host
+from config import (
+    DATABASE_PATH,
+    BITMAIN_USERNAME,
+    BITMAIN_PASSWORD,
+    AWESOME_USERNAME,
+    AWESOME_PASSWORD,
+)
+
+
+DB = DATABASE_PATH
+
+WORKERS = 12
+
+KNOWN_DRIVERS = {
+    "awesome",
+    "bitmain_stock",
+}
+
+
+def detect(row):
+
+    result = None
+
+
+    for attempt in range(3):
+
+        result = detect_host(
+            row["ip"]
+        )
+
+
+        if (
+            result
+            and
+            result.get("driver")
+            in KNOWN_DRIVERS
+        ):
+
+            break
+
+
+        if attempt < 2:
+
+            time.sleep(
+                0.75
+            )
+
+
+    return (
+        row,
+        result,
+    )
+
+
+db = sqlite3.connect(
+    DB,
+    timeout=20,
+)
+
+db.row_factory = sqlite3.Row
+
+
+all_miners = db.execute("""
+    SELECT
+        id,
+        name,
+        ip,
+        driver,
+        model,
+        firmware,
+        detection_mode
+
+    FROM miners
+
+    ORDER BY ip
+""").fetchall()
+
+db.close()
+
+
+auto_miners = [
+    row
+    for row in all_miners
+    if (
+        row["detection_mode"]
+        or "AUTO"
+    ) == "AUTO"
+]
+
+
+manual_miners = [
+    row
+    for row in all_miners
+    if (
+        row["detection_mode"]
+        or "AUTO"
+    ) == "MANUAL"
+]
+
+
+results = []
+
+
+with ThreadPoolExecutor(
+    max_workers=WORKERS
+) as executor:
+
+    futures = [
+        executor.submit(
+            detect,
+            row,
+        )
+        for row in auto_miners
+    ]
+
+
+    for future in as_completed(
+        futures
+    ):
+
+        try:
+
+            results.append(
+                future.result()
+            )
+
+        except Exception as exc:
+
+            print(
+                "ERROR:",
+                type(exc).__name__,
+                exc,
+            )
+
+
+updated = 0
+unchanged = 0
+failed = 0
+locked = 0
+
+drivers = {
+    "awesome": 0,
+    "bitmain_stock": 0,
+}
+
+
+for row, result in results:
+
+    if (
+        not result
+        or
+        result.get("driver")
+        not in KNOWN_DRIVERS
+    ):
+
+        failed += 1
+
+        print(
+            f"{row['ip']:<16} "
+            "NO CHANGE"
+        )
+
+        continue
+
+
+    driver = result[
+        "driver"
+    ]
+
+
+    model = (
+        result.get(
+            "model"
+        )
+        or
+        row["model"]
+    )
+
+
+    firmware = (
+        result.get(
+            "firmware"
+        )
+        or
+        row["firmware"]
+    )
+
+
+    drivers[
+        driver
+    ] += 1
+
+
+    changed = (
+        row["driver"] != driver
+        or
+        row["model"] != model
+        or
+        row["firmware"] != firmware
+    )
+
+
+    db = sqlite3.connect(
+        DB,
+        timeout=20,
+    )
+
+    db.row_factory = sqlite3.Row
+
+
+    current = db.execute("""
+        SELECT detection_mode
+
+        FROM miners
+
+        WHERE id=?
+    """, (
+        row["id"],
+    )).fetchone()
+
+
+    if (
+        not current
+        or
+        (
+            current[
+                "detection_mode"
+            ]
+            or "AUTO"
+        )
+        !=
+        "AUTO"
+    ):
+
+        db.close()
+
+        locked += 1
+
+        print(
+            f"{row['ip']:<16} "
+            "MANUAL LOCK"
+        )
+
+        continue
+
+
+    if not changed:
+
+        db.close()
+
+        unchanged += 1
+
+        print(
+            f"{row['ip']:<16} "
+            f"{driver:<15} "
+            f"{model or '-':<20} "
+            f"{firmware or '-'}"
+        )
+
+        continue
+
+
+    if driver == "awesome":
+
+        username = AWESOME_USERNAME
+        password = AWESOME_PASSWORD
+
+    else:
+
+        username = BITMAIN_USERNAME
+        password = BITMAIN_PASSWORD
+
+
+    cur = db.execute("""
+        UPDATE miners
+
+        SET
+            driver=?,
+            username=?,
+            password=?,
+            model=?,
+            firmware=?
+
+        WHERE
+            id=?
+            AND detection_mode='AUTO'
+    """, (
+        driver,
+        username,
+        password,
+        model,
+        firmware,
+        row["id"],
+    ))
+
+
+    if cur.rowcount != 1:
+
+        db.rollback()
+        db.close()
+
+        locked += 1
+
+        print(
+            f"{row['ip']:<16} "
+            "MANUAL LOCK"
+        )
+
+        continue
+
+
+    message = (
+        f"Auto-detected "
+        f"{driver}; "
+        f"model={model or '-'}; "
+        f"firmware={firmware or '-'}"
+    )
+
+
+    db.execute("""
+        INSERT INTO action_log
+        (
+            ts,
+            source,
+            action,
+            miner_id,
+            ip,
+            name,
+            success,
+            message
+        )
+
+        VALUES (
+            CAST(
+                strftime('%s','now')
+                AS INTEGER
+            ),
+            'SYSTEM',
+            'FIRMWARE_DETECTED',
+            ?,
+            ?,
+            ?,
+            1,
+            ?
+        )
+    """, (
+        row["id"],
+        row["ip"],
+        row["name"],
+        message,
+    ))
+
+
+    db.commit()
+    db.close()
+
+    updated += 1
+
+
+    print(
+        f"{row['ip']:<16} "
+        f"{driver:<15} "
+        f"{model or '-':<20} "
+        f"{firmware or '-'} "
+        "UPDATED"
+    )
+
+
+print()
+print("===== SUMMARY =====")
+
+print(
+    "total:",
+    len(
+        all_miners
+    )
+)
+
+print(
+    "auto:",
+    len(
+        auto_miners
+    )
+)
+
+print(
+    "manual:",
+    len(
+        manual_miners
+    )
+)
+
+print(
+    "awesome:",
+    drivers["awesome"]
+)
+
+print(
+    "bitmain_stock:",
+    drivers[
+        "bitmain_stock"
+    ]
+)
+
+print(
+    "updated:",
+    updated
+)
+
+print(
+    "unchanged:",
+    unchanged
+)
+
+print(
+    "not detected:",
+    failed
+)
+
+print(
+    "manual lock during run:",
+    locked
+)

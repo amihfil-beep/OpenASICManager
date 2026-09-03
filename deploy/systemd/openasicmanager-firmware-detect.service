@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenASICManager firmware auto detection
+After=network-online.target openasicmanager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+User=openasicmanager
+Group=openasicmanager
+
+WorkingDirectory=/opt/openasicmanager
+
+EnvironmentFile=-/etc/openasicmanager/openasicmanager.env
+
+ExecStart=/opt/openasicmanager/venv/bin/python \
+    /opt/openasicmanager/scripts/asic-firmware-detect
+
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+ReadWritePaths=/var/lib/openasicmanager

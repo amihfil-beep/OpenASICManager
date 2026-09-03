@@ -1,0 +1,50 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.htpasswd
+*secret*
+*token*
+
+# Runtime databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Backups
+*.backup
+*.backup-*
+*.bak
+*.old
+*~
+backup/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime/logs
+*.log
+logs/
+run/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Production-specific files
+production-*
+raw/

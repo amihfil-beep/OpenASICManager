@@ -268,7 +268,7 @@ acceptable.
 
 ## 14. Uninstall
 
-The initial 0.1.0 release does not yet include an automatic uninstall script.
+The current release does not yet include an automatic uninstall script.
 
 To remove OpenASICManager manually, first stop and disable its services:
 

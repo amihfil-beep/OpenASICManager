@@ -2,6 +2,16 @@
 
 All notable changes to OpenASICManager will be documented in this file.
 
+## [0.1.2] - 2026-09-03
+
+Public release packaging fixes.
+
+### Fixed
+
+- Remote Web nginx generator is installed with executable permissions.
+- Quick Start now includes the complete Git clone command.
+- Removed outdated 0.1.0 wording from uninstall documentation.
+
 ## [0.1.1] - 2026-09-03
 
 First public release candidate after fresh-install review.

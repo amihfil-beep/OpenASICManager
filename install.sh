@@ -151,16 +151,22 @@ find \
     -type f \
     -exec chmod 0644 {} \;
 
-chmod 0755 \
-    "$INSTALL_DIR/scripts/asic-firmware-detect"
+for script in \
+    asic-firmware-detect \
+    asic-discover \
+    generate-remote-nginx
+do
 
-if [ -f \
-    "$INSTALL_DIR/scripts/asic-discover"
-]; then
+    if [ -f \
+        "$INSTALL_DIR/scripts/$script"
+    ]; then
 
-    chmod 0755 \
-        "$INSTALL_DIR/scripts/asic-discover"
-fi
+        chmod 0755 \
+            "$INSTALL_DIR/scripts/$script"
+
+    fi
+
+done
 
 
 # ------------------------------------------------------------

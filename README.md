@@ -17,7 +17,7 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 
 ## Current release
 
-**0.1.1**
+**0.1.2**
 
 This is the first public release.
 
@@ -181,6 +181,8 @@ Python dependencies:
 
 Clone the repository and run:
 
+    git clone https://github.com/amihfil-beep/OpenASICManager.git
+    cd OpenASICManager
     sudo ./install.sh
 
 Then configure:

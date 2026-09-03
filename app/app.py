@@ -6856,7 +6856,7 @@ def api_remote_web_authorize(
 def health():
     return {
         "status": "ok",
-        "version": "0.1.1",
+        "version": "0.1.2",
         "time":
             datetime.now(
                 MOSCOW
@@ -7059,7 +7059,7 @@ def api_status():
         })
 
     return {
-        "version": "0.1.1",
+        "version": "0.1.2",
 
         "now":
             now.isoformat(),
@@ -12530,7 +12530,7 @@ a:hover {
         <h1>
             OpenASICManager
             <span class="muted small">
-                <span id="appVersion">v0.1.1</span>
+                <span id="appVersion">v0.1.2</span>
             </span>
         </h1>
 

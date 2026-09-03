@@ -1,5 +1,9 @@
 # OpenASICManager
 
+[![CI](https://github.com/amihfil-beep/OpenASICManager/actions/workflows/ci.yml/badge.svg)](https://github.com/amihfil-beep/OpenASICManager/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/amihfil-beep/OpenASICManager)](https://github.com/amihfil-beep/OpenASICManager/releases/latest)
+[![License](https://img.shields.io/github/license/amihfil-beep/OpenASICManager)](LICENSE)
+
 OpenASICManager is a self-hosted web application for monitoring and controlling ASIC miners from a Linux server.
 
 The project was created as a lightweight alternative to heavyweight mining-management platforms where the main requirements are:

@@ -1,0 +1,264 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: OpenASICManager tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Python syntax
+        run: |
+          python -m py_compile \
+            app/app.py \
+            app/config.py \
+            app/discovery.py \
+            app/remote_web.py \
+            scripts/asic-firmware-detect \
+            scripts/generate-remote-nginx
+
+      - name: Shell syntax
+        run: |
+          bash -n install.sh
+          bash -n configure-web.sh
+          bash -n scripts/asic-discover
+
+      - name: Fresh installation smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DB=/tmp/openasicmanager-ci.db
+          LOG=/tmp/openasicmanager-ci.log
+          HEALTH=/tmp/openasicmanager-ci-health.json
+          STATUS=/tmp/openasicmanager-ci-status.json
+          RULES=/tmp/openasicmanager-ci-rules.json
+
+          rm -f \
+            "$DB" \
+            "$DB-shm" \
+            "$DB-wal" \
+            "$LOG" \
+            "$HEALTH" \
+            "$STATUS" \
+            "$RULES"
+
+          (
+            cd app
+
+            ASIC_MANAGER_DB="$DB" \
+            ASIC_MANAGER_TIMEZONE=UTC \
+            TELEGRAM_ENABLED=false \
+            TELEGRAM_SUMMARY_ENABLED=false \
+            REMOTE_WEB_ENABLED=false \
+            python -m uvicorn \
+              app:app \
+              --host 127.0.0.1 \
+              --port 18089 \
+              --workers 1
+          ) >"$LOG" 2>&1 &
+
+          APP_PID=$!
+
+          cleanup() {
+            kill "$APP_PID" 2>/dev/null || true
+            wait "$APP_PID" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+
+          READY=0
+
+          for i in $(seq 1 30); do
+            if curl \
+              -fsS \
+              http://127.0.0.1:18089/health \
+              >"$HEALTH" \
+              2>/dev/null
+            then
+              READY=1
+              break
+            fi
+
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Application failed to start"
+            cat "$LOG"
+            exit 1
+          fi
+
+          curl \
+            -fsS \
+            http://127.0.0.1:18089/api/status \
+            >"$STATUS"
+
+          curl \
+            -fsS \
+            http://127.0.0.1:18089/api/schedule/rules \
+            >"$RULES"
+
+          python - <<'PY'
+          import json
+          import sqlite3
+          from pathlib import Path
+
+
+          db_path = Path(
+              "/tmp/openasicmanager-ci.db"
+          )
+
+          version = Path(
+              "VERSION"
+          ).read_text(
+              encoding="utf-8"
+          ).strip()
+
+
+          with open(
+              "/tmp/openasicmanager-ci-health.json",
+              encoding="utf-8",
+          ) as handle:
+
+              health = json.load(handle)
+
+
+          with open(
+              "/tmp/openasicmanager-ci-status.json",
+              encoding="utf-8",
+          ) as handle:
+
+              status = json.load(handle)
+
+
+          with open(
+              "/tmp/openasicmanager-ci-rules.json",
+              encoding="utf-8",
+          ) as handle:
+
+              rules = json.load(handle)
+
+
+          conn = sqlite3.connect(
+              db_path
+          )
+
+
+          miners = conn.execute("""
+              SELECT COUNT(*)
+              FROM miners
+          """).fetchone()[0]
+
+
+          schedule_rules = conn.execute("""
+              SELECT COUNT(*)
+              FROM schedule_rules
+          """).fetchone()[0]
+
+
+          row = conn.execute("""
+              SELECT value
+              FROM settings
+              WHERE key='scheduler_enabled'
+          """).fetchone()
+
+
+          scheduler_enabled = (
+              row[0]
+              if row
+              else None
+          )
+
+
+          conn.close()
+
+
+          print(
+              "version:",
+              version
+          )
+
+          print(
+              "health:",
+              health
+          )
+
+          print(
+              "miners:",
+              miners
+          )
+
+          print(
+              "schedule_rules:",
+              schedule_rules
+          )
+
+          print(
+              "scheduler_enabled:",
+              scheduler_enabled
+          )
+
+          print(
+              "timezone:",
+              rules.get("timezone")
+          )
+
+
+          assert health.get("status") == "ok"
+
+          assert health.get(
+              "version"
+          ) == version
+
+          assert status.get(
+              "version"
+          ) == version
+
+          assert status.get(
+              "scheduler_enabled"
+          ) is False
+
+          assert rules.get(
+              "scheduler_enabled"
+          ) is False
+
+          assert rules.get(
+              "timezone"
+          ) == "UTC"
+
+          assert rules.get(
+              "rules"
+          ) == []
+
+          assert miners == 0
+
+          assert schedule_rules == 0
+
+          assert scheduler_enabled == "0"
+
+
+          print()
+          print(
+              "FRESH INSTALL CI: PASS"
+          )
+          PY

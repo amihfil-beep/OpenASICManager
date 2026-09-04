@@ -249,6 +249,23 @@ Before deploying it to a production mining environment, test control operations 
 - [Remote ASIC Web](docs/REMOTE-WEB.md)
 - [Changelog](CHANGELOG.md)
 
+## Roadmap
+
+Planned areas of development include:
+
+- support for additional ASIC models and firmware families;
+- modular driver architecture;
+- improved telemetry and historical charts;
+- configurable alert policies;
+- improved multi-subnet discovery and inventory management;
+- automated Remote Web configuration updates;
+- additional authentication options;
+- API documentation;
+- automated upgrade and uninstall tooling.
+
+Feature development will prioritize safe operation and compatibility with
+real ASIC hardware over adding large numbers of untested features.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

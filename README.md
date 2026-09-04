@@ -6,6 +6,10 @@
 
 OpenASICManager is a self-hosted web application for monitoring and controlling ASIC miners from a Linux server.
 
+## Dashboard
+
+![OpenASICManager dashboard](docs/images/dashboard.png)
+
 The project was created as a lightweight alternative to heavyweight mining-management platforms where the main requirements are:
 
 - centralized ASIC monitoring;

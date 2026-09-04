@@ -440,3 +440,138 @@ def ensure_schedule_rules_schema():
     finally:
 
         conn.close()
+
+# ============================================================
+# CONTROL PERSISTENCE
+# ============================================================
+
+def get_control_job(job_id):
+
+    conn = db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM control_jobs
+        WHERE id=?
+    """, (
+        job_id,
+    )).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_active_control_job(miner_id):
+
+    conn = db()
+
+    row = conn.execute("""
+        SELECT *
+        FROM control_jobs
+
+        WHERE
+            miner_id=?
+            AND status IN (
+                'QUEUED',
+                'RUNNING'
+            )
+
+        ORDER BY id DESC
+
+        LIMIT 1
+    """, (
+        miner_id,
+    )).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def update_control_job(
+    job_id,
+    **fields,
+):
+
+    if not fields:
+        return
+
+    allowed = {
+        "started_at",
+        "completed_at",
+        "status",
+        "attempts",
+        "final_state",
+        "message",
+    }
+
+    unknown = (
+        set(fields)
+        - allowed
+    )
+
+    if unknown:
+        raise RuntimeError(
+            "Invalid control job field: "
+            + ", ".join(
+                sorted(unknown)
+            )
+        )
+
+    columns = []
+    values = []
+
+    for key, value in fields.items():
+
+        columns.append(
+            f"{key}=?"
+        )
+
+        values.append(
+            value
+        )
+
+    values.append(
+        job_id
+    )
+
+    conn = db()
+
+    conn.execute(
+        """
+        UPDATE control_jobs
+        SET %s
+        WHERE id=?
+        """
+        % ", ".join(columns),
+        values,
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def set_last_command(
+    miner_id,
+    action,
+):
+
+    conn = db()
+
+    conn.execute("""
+        UPDATE miners
+
+        SET
+            last_action=?,
+            last_action_at=?
+
+        WHERE id=?
+    """, (
+        action.upper(),
+        int(time.time()),
+        miner_id,
+    ))
+
+    conn.commit()
+    conn.close()

@@ -9,7 +9,6 @@ import os
 import hmac
 import hashlib
 import base64
-import contextvars
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -156,6 +155,15 @@ from monitoring.service import (
     MonitoringRuntime,
 )
 
+from audit.identity import (
+    sanitize_audit_username,
+    current_audit_actor,
+    audit_source,
+    audit_actor_from_remote_user,
+    bind_audit_actor,
+    reset_audit_actor,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -165,112 +173,12 @@ from fastapi.responses import HTMLResponse, Response, RedirectResponse
 # USER AUDIT
 # ============================================================
 
-audit_actor_context = (
-    contextvars.ContextVar(
-        "asic_manager_audit_actor",
-        default=None,
-    )
-)
 
 
-def sanitize_audit_username(
-    value,
-):
-
-    value = str(
-        value or ""
-    ).strip()
 
 
-    if not value:
-        return None
 
 
-    safe = "".join(
-        character
-        for character
-        in value
-        if (
-            character.isalnum()
-            or
-            character
-            in (
-                ".",
-                "_",
-                "-",
-                "@",
-            )
-        )
-    )
-
-
-    if not safe:
-        return None
-
-
-    return safe[:64]
-
-
-def current_audit_actor():
-
-    actor = (
-        audit_actor_context.get()
-    )
-
-
-    if actor:
-        return actor
-
-
-    return "LOCAL"
-
-
-def audit_source(
-    source,
-):
-
-    source = str(
-        source or "SYSTEM"
-    )
-
-
-    # Already-attributed sources are preserved.
-
-    if (
-        source == "LOCAL"
-        or
-        source.startswith(
-            "WEB:"
-        )
-    ):
-        return source
-
-
-    actor = (
-        audit_actor_context.get()
-    )
-
-
-    # Only user-initiated MANUAL/SYSTEM
-    # events are rewritten.
-    #
-    # Background scheduler/system activity
-    # has no request context and therefore
-    # remains SCHEDULER/SYSTEM.
-
-    if (
-        actor
-        and
-        source
-        in (
-            "MANUAL",
-            "SYSTEM",
-        )
-    ):
-        return actor
-
-
-    return source
 
 
 
@@ -822,44 +730,18 @@ async def audit_user_middleware(
     request,
     call_next,
 ):
-
-    remote_user = (
+    actor = audit_actor_from_remote_user(
         request.headers.get(
             "x-remote-user",
             "",
         )
     )
 
-
-    username = (
-        sanitize_audit_username(
-            remote_user
-        )
+    token = bind_audit_actor(
+        actor
     )
-
-
-    if username:
-
-        actor = (
-            "WEB:"
-            +
-            username
-        )
-
-    else:
-
-        actor = "LOCAL"
-
-
-    token = (
-        audit_actor_context.set(
-            actor
-        )
-    )
-
 
     try:
-
         response = await call_next(
             request
         )
@@ -867,10 +749,10 @@ async def audit_user_middleware(
         return response
 
     finally:
-
-        audit_actor_context.reset(
+        reset_audit_actor(
             token
         )
+
 
 
 @app.get(

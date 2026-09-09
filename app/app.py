@@ -98,6 +98,11 @@ from telemetry.service import (
     TelemetryRuntime,
 )
 
+from telemetry.analytics import (
+    history_stats,
+    miner_history_points,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -5396,58 +5401,10 @@ def api_history(
     )
 
 
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT
-            ts,
-            state,
-            hashrate,
-            avg_hashrate,
-            temp,
-            power
-
-        FROM telemetry
-
-        WHERE
-            miner_id=?
-            AND ts>=?
-
-        ORDER BY ts ASC
-    """, (
+    points = miner_history_points(
         miner_id,
         since,
-    )).fetchall()
-
-    conn.close()
-
-
-    points = []
-
-    for row in rows:
-
-        points.append({
-            "time":
-                datetime.fromtimestamp(
-                    row["ts"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "state":
-                row["state"],
-
-            "hashrate":
-                row["hashrate"],
-
-            "avg_hashrate":
-                row["avg_hashrate"],
-
-            "temp":
-                row["temp"],
-
-            "power":
-                row["power"],
-        })
+    )
 
 
     return {
@@ -5472,58 +5429,9 @@ def api_history(
             points,
     }
 
-
 @app.get(
     "/api/history/stats/summary"
 )
-def history_stats():
-
-    conn = db()
-
-    row = conn.execute("""
-        SELECT
-            COUNT(*) AS rows,
-            MIN(ts) AS oldest,
-            MAX(ts) AS newest
-
-        FROM telemetry
-    """).fetchone()
-
-    conn.close()
-
-
-    return {
-        "rows":
-            row["rows"],
-
-        "oldest":
-            (
-                datetime.fromtimestamp(
-                    row["oldest"],
-                    MOSCOW,
-                ).isoformat()
-
-                if row["oldest"]
-                else None
-            ),
-
-        "newest":
-            (
-                datetime.fromtimestamp(
-                    row["newest"],
-                    MOSCOW,
-                ).isoformat()
-
-                if row["newest"]
-                else None
-            ),
-
-        "interval_seconds":
-            TELEMETRY_INTERVAL,
-
-        "retention_days":
-            TELEMETRY_RETENTION_DAYS,
-    }
 
 
 

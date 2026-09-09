@@ -19,6 +19,8 @@ TELEMETRY_RETENTION_DAYS = 90
 __all__ = (
     "TELEMETRY_RETENTION_DAYS",
     "save_telemetry_snapshot",
+    "telemetry_stats_row",
+    "telemetry_history_rows",
 )
 
 
@@ -113,3 +115,54 @@ def save_telemetry_snapshot():
 
     conn.commit()
     conn.close()
+
+
+def telemetry_stats_row():
+
+    conn = db()
+
+    row = conn.execute("""
+        SELECT
+            COUNT(*) AS rows,
+            MIN(ts) AS oldest,
+            MAX(ts) AS newest
+
+        FROM telemetry
+    """).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def telemetry_history_rows(
+    miner_id,
+    since,
+):
+
+    conn = db()
+
+    rows = conn.execute("""
+        SELECT
+            ts,
+            state,
+            hashrate,
+            avg_hashrate,
+            temp,
+            power
+
+        FROM telemetry
+
+        WHERE
+            miner_id=?
+            AND ts>=?
+
+        ORDER BY ts ASC
+    """, (
+        miner_id,
+        since,
+    )).fetchall()
+
+    conn.close()
+
+    return rows

@@ -93,6 +93,11 @@ from telemetry.repository import (
     save_telemetry_snapshot,
 )
 
+from telemetry.service import (
+    TELEMETRY_INTERVAL,
+    TelemetryRuntime,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -320,7 +325,6 @@ TELEGRAM_SUMMARY_WEEKDAYS = {
 
 
 # Historical telemetry
-TELEMETRY_INTERVAL = 300
 
 # Anomaly detection
 ANOMALY_INTERVAL = 30
@@ -440,6 +444,19 @@ def log_event(
         success=success,
         message=message,
     )
+
+
+telemetry_runtime = TelemetryRuntime(
+    log_event=log_event,
+    stop_event=stop_event,
+)
+
+
+# Preserve existing thread target interface.
+telemetry_loop = (
+    telemetry_runtime.run
+)
+
 
 
 # ============================================================
@@ -705,38 +722,6 @@ def polling_loop():
 
 
 
-def telemetry_loop():
-
-    # Даём poller сначала получить
-    # актуальные данные после старта сервиса.
-    if stop_event.wait(30):
-        return
-
-
-    while not stop_event.is_set():
-
-        try:
-
-            save_telemetry_snapshot()
-
-        except Exception as exc:
-
-            log_event(
-                source="SYSTEM",
-                action="TELEMETRY_ERROR",
-                success=False,
-                message=(
-                    f"{type(exc).__name__}: "
-                    f"{exc}"
-                ),
-            )
-
-
-        if stop_event.wait(
-            TELEMETRY_INTERVAL
-        ):
-
-            return
 
 
 # ============================================================

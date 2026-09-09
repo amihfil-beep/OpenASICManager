@@ -164,6 +164,11 @@ from audit.identity import (
     reset_audit_actor,
 )
 
+from audit.service import (
+    AuditRuntime,
+    action_log_entries,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -275,84 +280,14 @@ stop_event = threading.Event()
 # ACTION LOG
 # ============================================================
 
-def log_event(
-    source,
-    action,
-    miner=None,
-    success=True,
-    message=None,
-):
-    source = audit_source(source)
+audit_runtime = AuditRuntime(
+    notify_event=telegram_event_async,
+)
 
-    """
-    Audit trail for manual and scheduler commands.
-
-    Logging must never break ASIC control.
-    """
-
-    try:
-        miner_id = None
-        ip = None
-        name = None
-
-        if miner is not None:
-
-            miner_id = miner["id"]
-            ip = miner["ip"]
-            name = miner["name"]
-
-        if message is None:
-            message = ""
-
-        message = str(message)
-
-        if len(message) > 1000:
-            message = message[:1000]
-
-        conn = db()
-
-        conn.execute("""
-            INSERT INTO action_log
-            (
-                ts,
-                source,
-                action,
-                miner_id,
-                ip,
-                name,
-                success,
-                message
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            int(time.time()),
-            str(source),
-            str(action),
-            miner_id,
-            ip,
-            name,
-            1 if success else 0,
-            message,
-        ))
-
-        conn.commit()
-        conn.close()
-
-    except Exception:
-        # Управление ASIC не должно ломаться
-        # из-за ошибки записи журнала.
-        pass
+# Preserve the existing application-facing logging interface.
+log_event = audit_runtime.log_event
 
 
-    # Telegram notifications are triggered only for
-    # important state changes and failed control jobs.
-    telegram_event_async(
-        source=source,
-        action=action,
-        miner=miner,
-        success=success,
-        message=message,
-    )
 
 telegram_runtime = TelegramRuntime(
     log_event=log_event,
@@ -3139,81 +3074,13 @@ def clear_overrides():
 def api_logs(
     limit: int = 100,
 ):
-
-    limit = max(
-        1,
-        min(
-            int(limit),
-            500,
-        ),
-    )
-
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT
-            id,
-            ts,
-            source,
-            action,
-            miner_id,
-            ip,
-            name,
-            success,
-            message
-
-        FROM action_log
-
-        ORDER BY id DESC
-
-        LIMIT ?
-    """, (
-        limit,
-    )).fetchall()
-
-    conn.close()
-
-    result = []
-
-    for row in rows:
-
-        result.append({
-            "id":
-                row["id"],
-
-            "time":
-                datetime.fromtimestamp(
-                    row["ts"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "source":
-                row["source"],
-
-            "action":
-                row["action"],
-
-            "miner_id":
-                row["miner_id"],
-
-            "ip":
-                row["ip"],
-
-            "name":
-                row["name"],
-
-            "success":
-                bool(
-                    row["success"]
-                ),
-
-            "message":
-                row["message"],
-        })
-
     return {
-        "logs": result
+        "logs": action_log_entries(
+            limit,
+            MOSCOW,
+        )
     }
+
 
 
 

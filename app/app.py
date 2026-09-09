@@ -88,6 +88,27 @@ from scheduler.validation import (
     schedule_normalize_input,
 )
 
+from telemetry.repository import (
+    TELEMETRY_RETENTION_DAYS,
+    save_telemetry_snapshot,
+    farm_history_rows,
+    farm_problem_rows,
+    farm_current_rows,
+)
+
+from telemetry.service import (
+    TELEMETRY_INTERVAL,
+    TelemetryRuntime,
+)
+
+from telemetry.analytics import (
+    history_stats,
+    miner_history_points,
+    farm_history_points,
+    farm_problem_miners,
+    farm_current_summary,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -315,8 +336,6 @@ TELEGRAM_SUMMARY_WEEKDAYS = {
 
 
 # Historical telemetry
-TELEMETRY_INTERVAL = 300
-TELEMETRY_RETENTION_DAYS = 90
 
 # Anomaly detection
 ANOMALY_INTERVAL = 30
@@ -436,6 +455,19 @@ def log_event(
         success=success,
         message=message,
     )
+
+
+telemetry_runtime = TelemetryRuntime(
+    log_event=log_event,
+    stop_event=stop_event,
+)
+
+
+# Preserve existing thread target interface.
+telemetry_loop = (
+    telemetry_runtime.run
+)
+
 
 
 # ============================================================
@@ -699,131 +731,8 @@ def polling_loop():
 # HISTORICAL TELEMETRY
 # ============================================================
 
-def save_telemetry_snapshot():
-
-    now = int(
-        time.time()
-    )
-
-    conn = db()
-
-    miners = conn.execute("""
-        SELECT
-            id,
-            ip,
-            name,
-            driver,
-            enabled,
-            last_state,
-            hashrate,
-            avg_hashrate,
-            temp,
-            power
-
-        FROM miners
-
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """).fetchall()
 
 
-    rows = []
-
-    for miner in miners:
-
-        rows.append((
-            now,
-            miner["id"],
-            miner["ip"],
-            miner["name"],
-            miner["driver"],
-            miner["last_state"],
-            miner["hashrate"],
-            miner["avg_hashrate"],
-            miner["temp"],
-            miner["power"],
-        ))
-
-
-    if rows:
-
-        conn.executemany("""
-            INSERT INTO telemetry
-            (
-                ts,
-                miner_id,
-                ip,
-                name,
-                driver,
-                state,
-                hashrate,
-                avg_hashrate,
-                temp,
-                power
-            )
-
-            VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        """, rows)
-
-
-    retention_limit = (
-        now
-        -
-        TELEMETRY_RETENTION_DAYS
-        * 86400
-    )
-
-
-    conn.execute("""
-        DELETE FROM telemetry
-        WHERE ts < ?
-    """, (
-        retention_limit,
-    ))
-
-
-    conn.commit()
-    conn.close()
-
-
-def telemetry_loop():
-
-    # Даём poller сначала получить
-    # актуальные данные после старта сервиса.
-    if stop_event.wait(30):
-        return
-
-
-    while not stop_event.is_set():
-
-        try:
-
-            save_telemetry_snapshot()
-
-        except Exception as exc:
-
-            log_event(
-                source="SYSTEM",
-                action="TELEMETRY_ERROR",
-                success=False,
-                message=(
-                    f"{type(exc).__name__}: "
-                    f"{exc}"
-                ),
-            )
-
-
-        if stop_event.wait(
-            TELEMETRY_INTERVAL
-        ):
-
-            return
 
 
 # ============================================================
@@ -5498,58 +5407,10 @@ def api_history(
     )
 
 
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT
-            ts,
-            state,
-            hashrate,
-            avg_hashrate,
-            temp,
-            power
-
-        FROM telemetry
-
-        WHERE
-            miner_id=?
-            AND ts>=?
-
-        ORDER BY ts ASC
-    """, (
+    points = miner_history_points(
         miner_id,
         since,
-    )).fetchall()
-
-    conn.close()
-
-
-    points = []
-
-    for row in rows:
-
-        points.append({
-            "time":
-                datetime.fromtimestamp(
-                    row["ts"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "state":
-                row["state"],
-
-            "hashrate":
-                row["hashrate"],
-
-            "avg_hashrate":
-                row["avg_hashrate"],
-
-            "temp":
-                row["temp"],
-
-            "power":
-                row["power"],
-        })
+    )
 
 
     return {
@@ -5574,58 +5435,9 @@ def api_history(
             points,
     }
 
-
 @app.get(
     "/api/history/stats/summary"
 )
-def history_stats():
-
-    conn = db()
-
-    row = conn.execute("""
-        SELECT
-            COUNT(*) AS rows,
-            MIN(ts) AS oldest,
-            MAX(ts) AS newest
-
-        FROM telemetry
-    """).fetchone()
-
-    conn.close()
-
-
-    return {
-        "rows":
-            row["rows"],
-
-        "oldest":
-            (
-                datetime.fromtimestamp(
-                    row["oldest"],
-                    MOSCOW,
-                ).isoformat()
-
-                if row["oldest"]
-                else None
-            ),
-
-        "newest":
-            (
-                datetime.fromtimestamp(
-                    row["newest"],
-                    MOSCOW,
-                ).isoformat()
-
-                if row["newest"]
-                else None
-            ),
-
-        "interval_seconds":
-            TELEMETRY_INTERVAL,
-
-        "retention_days":
-            TELEMETRY_RETENTION_DAYS,
-    }
 
 
 
@@ -6803,383 +6615,29 @@ def api_farm_history(
     )
 
 
-    conn = db()
-
-
-    # Сначала превращаем каждые 30 строк ASIC
-    # в один снимок всей фермы.
-    #
-    # Затем при необходимости агрегируем
-    # несколько снимков в более крупный bucket.
-
-    rows = conn.execute("""
-        WITH snapshots AS
-        (
-            SELECT
-                ts,
-
-                SUM(
-                    CASE
-                        WHEN state='MINING'
-                        THEN 1
-                        ELSE 0
-                    END
-                ) AS mining_count,
-
-                SUM(
-                    CASE
-                        WHEN state='PAUSED'
-                        THEN 1
-                        ELSE 0
-                    END
-                ) AS paused_count,
-
-                SUM(
-                    CASE
-                        WHEN state='STARTING'
-                        THEN 1
-                        ELSE 0
-                    END
-                ) AS starting_count,
-
-                SUM(
-                    CASE
-                        WHEN state='OFFLINE'
-                        THEN 1
-                        ELSE 0
-                    END
-                ) AS offline_count,
-
-                COUNT(*) AS total_count,
-
-                SUM(
-                    COALESCE(
-                        hashrate,
-                        0
-                    )
-                ) AS total_hashrate,
-
-                SUM(
-                    COALESCE(
-                        power,
-                        0
-                    )
-                ) AS known_power,
-
-                MAX(temp) AS max_temp,
-
-                AVG(
-                    CASE
-                        WHEN temp IS NOT NULL
-                        THEN temp
-                    END
-                ) AS avg_temp
-
-            FROM telemetry
-
-            WHERE ts >= ?
-
-            GROUP BY ts
-        )
-
-        SELECT
-            (
-                CAST(
-                    ts / ?
-                    AS INTEGER
-                )
-                * ?
-            ) AS bucket_ts,
-
-            AVG(
-                mining_count
-            ) AS mining_count,
-
-            AVG(
-                paused_count
-            ) AS paused_count,
-
-            AVG(
-                starting_count
-            ) AS starting_count,
-
-            AVG(
-                offline_count
-            ) AS offline_count,
-
-            AVG(
-                total_count
-            ) AS total_count,
-
-            AVG(
-                total_hashrate
-            ) AS total_hashrate,
-
-            AVG(
-                known_power
-            ) AS known_power,
-
-            MAX(
-                max_temp
-            ) AS max_temp,
-
-            AVG(
-                avg_temp
-            ) AS avg_temp
-
-        FROM snapshots
-
-        GROUP BY bucket_ts
-
-        ORDER BY bucket_ts ASC
-    """, (
+    rows = farm_history_rows(
         since,
         bucket_seconds,
-        bucket_seconds,
-    )).fetchall()
+    )
+
+    problem_rows = farm_problem_rows(
+        since
+    )
+
+    current_rows = farm_current_rows()
 
 
-    # --------------------------------------------------------
-    # Problem ASICs in selected period
-    #
-    # Пока проблемой считаем:
-    # - хотя бы один OFFLINE snapshot
-    # - температура >= 85 C
-    #
-    # Hashrate threshold намеренно не задаём:
-    # у разных профилей он может отличаться.
-    # --------------------------------------------------------
+    points = farm_history_points(
+        rows
+    )
 
-    problem_rows = conn.execute("""
-        SELECT
-            miner_id,
-            ip,
-            name,
-            driver,
+    problems = farm_problem_miners(
+        problem_rows
+    )
 
-            COUNT(*) AS samples,
-
-            SUM(
-                CASE
-                    WHEN state='OFFLINE'
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS offline_samples,
-
-            SUM(
-                CASE
-                    WHEN temp >= 85
-                    THEN 1
-                    ELSE 0
-                END
-            ) AS critical_temp_samples,
-
-            MAX(temp) AS max_temp,
-
-            AVG(
-                CASE
-                    WHEN state='MINING'
-                    AND hashrate IS NOT NULL
-
-                    THEN hashrate
-                END
-            ) AS avg_mining_hashrate
-
-        FROM telemetry
-
-        WHERE ts >= ?
-
-        GROUP BY
-            miner_id,
-            ip,
-            name,
-            driver
-
-        HAVING
-            SUM(
-                CASE
-                    WHEN state='OFFLINE'
-                    THEN 1
-                    ELSE 0
-                END
-            ) > 0
-
-            OR
-
-            SUM(
-                CASE
-                    WHEN temp >= 85
-                    THEN 1
-                    ELSE 0
-                END
-            ) > 0
-
-        ORDER BY
-            offline_samples DESC,
-            critical_temp_samples DESC,
-            max_temp DESC
-    """, (
-        since,
-    )).fetchall()
-
-
-    current_rows = conn.execute("""
-        SELECT
-            last_state AS state,
-            hashrate,
-            power,
-            temp
-
-        FROM miners
-
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """).fetchall()
-
-
-    conn.close()
-
-
-    points = []
-
-
-    for row in rows:
-
-        points.append({
-            "time":
-                datetime.fromtimestamp(
-                    row["bucket_ts"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "mining":
-                row["mining_count"],
-
-            "paused":
-                row["paused_count"],
-
-            "starting":
-                row["starting_count"],
-
-            "offline":
-                row["offline_count"],
-
-            "total":
-                row["total_count"],
-
-            "hashrate":
-                row["total_hashrate"],
-
-            "power":
-                row["known_power"],
-
-            "max_temp":
-                row["max_temp"],
-
-            "avg_temp":
-                row["avg_temp"],
-        })
-
-
-    problems = []
-
-
-    for row in problem_rows:
-
-        problems.append({
-            "miner_id":
-                row["miner_id"],
-
-            "ip":
-                row["ip"],
-
-            "name":
-                row["name"],
-
-            "driver":
-                row["driver"],
-
-            "samples":
-                row["samples"],
-
-            "offline_samples":
-                row["offline_samples"],
-
-            "critical_temp_samples":
-                row["critical_temp_samples"],
-
-            "max_temp":
-                row["max_temp"],
-
-            "avg_mining_hashrate":
-                row["avg_mining_hashrate"],
-        })
-
-
-    current = {
-        "total": len(current_rows),
-
-        "mining":
-            sum(
-                1
-                for row in current_rows
-                if row["state"] == "MINING"
-            ),
-
-        "paused":
-            sum(
-                1
-                for row in current_rows
-                if row["state"] == "PAUSED"
-            ),
-
-        "starting":
-            sum(
-                1
-                for row in current_rows
-                if row["state"] == "STARTING"
-            ),
-
-        "offline":
-            sum(
-                1
-                for row in current_rows
-                if row["state"] == "OFFLINE"
-            ),
-
-        "hashrate":
-            sum(
-                float(
-                    row["hashrate"]
-                    or 0
-                )
-                for row in current_rows
-            ),
-
-        "power":
-            sum(
-                float(
-                    row["power"]
-                    or 0
-                )
-                for row in current_rows
-            ),
-
-        "max_temp":
-            max(
-                [
-                    float(row["temp"])
-                    for row in current_rows
-                    if row["temp"] is not None
-                ],
-                default=None,
-            ),
-    }
+    current = farm_current_summary(
+        current_rows
+    )
 
 
     return {

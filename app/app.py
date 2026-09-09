@@ -140,6 +140,11 @@ from notifications.telegram import (
     telegram_transport_health,
 )
 
+from monitoring.service import (
+    POLL_INTERVAL,
+    MonitoringRuntime,
+)
+
 
 
 from fastapi import FastAPI, HTTPException, Request
@@ -268,7 +273,6 @@ MOSCOW = ZoneInfo(
     TIMEZONE_NAME
 )
 
-POLL_INTERVAL = 15
 
 
 
@@ -531,109 +535,23 @@ telemetry_loop = (
 # MONITORING
 # ============================================================
 
-def poll_miner(miner_id):
-    miner = get_miner(
-        miner_id
-    )
+monitoring_runtime = MonitoringRuntime(
+    stop_event=stop_event,
+)
 
-    if not miner:
-        return
+# Preserve existing application-facing interfaces.
+poll_miner = (
+    monitoring_runtime.poll_miner
+)
 
-    if not miner["enabled"]:
-        return
+polling_loop = (
+    monitoring_runtime.run
+)
 
-    if miner["driver"] == "unset":
-        return
+delayed_poll = (
+    monitoring_runtime.delayed_poll
+)
 
-    now = int(
-        time.time()
-    )
-
-    try:
-        status = read_status(
-            miner
-        )
-
-        conn = db()
-
-        conn.execute("""
-            UPDATE miners
-
-            SET
-                model=?,
-                firmware=?,
-                last_state=?,
-                hashrate=?,
-                avg_hashrate=?,
-                temp=?,
-                power=?,
-                pool=?,
-                last_seen=?,
-                last_error=NULL
-
-            WHERE id=?
-        """, (
-            status.get(
-                "model"
-            ),
-
-            status.get(
-                "firmware"
-            ),
-
-            status.get(
-                "state"
-            ),
-
-            status.get(
-                "hashrate"
-            ),
-
-            status.get(
-                "avg_hashrate"
-            ),
-
-            status.get(
-                "temp"
-            ),
-
-            status.get(
-                "power"
-            ),
-
-            status.get(
-                "pool"
-            ),
-
-            now,
-            miner_id,
-        ))
-
-        conn.commit()
-        conn.close()
-
-    except Exception as exc:
-
-        conn = db()
-
-        conn.execute("""
-            UPDATE miners
-
-            SET
-                last_state='OFFLINE',
-                last_error=?
-
-            WHERE id=?
-        """, (
-            (
-                f"{type(exc).__name__}: "
-                f"{exc}"
-            ),
-            miner_id,
-        ))
-
-        conn.commit()
-        conn.close()
 
 
 control_runtime = ControlRuntime(
@@ -677,43 +595,6 @@ scheduler_loop = (
 
 
 
-def polling_loop():
-    while not stop_event.is_set():
-
-        miners = get_poll_miners()
-
-        if miners:
-
-            workers = min(
-                12,
-                len(miners),
-            )
-
-            with ThreadPoolExecutor(
-                max_workers=workers
-            ) as executor:
-
-                futures = [
-                    executor.submit(
-                        poll_miner,
-                        miner["id"],
-                    )
-                    for miner in miners
-                ]
-
-                for future in as_completed(
-                    futures
-                ):
-
-                    try:
-                        future.result()
-
-                    except Exception:
-                        pass
-
-        stop_event.wait(
-            POLL_INTERVAL
-        )
 
 
 # ============================================================
@@ -805,13 +686,6 @@ anomaly_loop = (
 # VERIFIED CONTROL
 # ============================================================
 
-def delayed_poll(miner_id):
-
-    time.sleep(3)
-
-    poll_miner(
-        miner_id
-    )
 
 
 

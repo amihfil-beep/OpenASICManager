@@ -87,6 +87,12 @@ from scheduler.repository import (
     desired_state,
     schedule_conflicting_rule,
     next_transition,
+    list_schedule_rules,
+    get_schedule_rule,
+    create_schedule_rule,
+    update_schedule_rule,
+    set_schedule_rule_enabled,
+    delete_schedule_rule,
 )
 
 from scheduler.service import (
@@ -1325,20 +1331,7 @@ def api_schedule_rules():
         MOSCOW
     )
 
-    conn = db()
-
-    rules = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        ORDER BY
-            time_minutes,
-            id
-    """).fetchall()
-
-    conn.close()
-
+    rules = list_schedule_rules()
 
     desired, active_rule, _ = (
         schedule_state_details(
@@ -1346,11 +1339,9 @@ def api_schedule_rules():
         )
     )
 
-
     upcoming = next_transition(
         now
     )
-
 
     return {
         "timezone":
@@ -1413,6 +1404,7 @@ def api_schedule_rules():
     }
 
 
+
 @app.post(
     "/api/schedule/rules"
 )
@@ -1422,35 +1414,23 @@ async def api_schedule_rule_create(
 
     ensure_schedule_rules_schema()
 
-
     try:
-
         data = await request.json()
-
     except Exception:
-
         raise HTTPException(
             status_code=400,
             detail="Invalid JSON body",
         )
 
-
-    normalized = (
-        schedule_normalize_input(
-            data
-        )
+    normalized = schedule_normalize_input(
+        data
     )
 
-
-    conflict = (
-        schedule_conflicting_rule(
-            normalized
-        )
+    conflict = schedule_conflicting_rule(
+        normalized
     )
-
 
     if conflict:
-
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1461,87 +1441,15 @@ async def api_schedule_rule_create(
             ),
         )
 
-
     now_epoch = int(
         time.time()
     )
 
-
-    conn = db()
-
-    cur = conn.execute("""
-        INSERT INTO schedule_rules
-        (
-            enabled,
-            action,
-            time_minutes,
-            days_mask,
-            scope,
-            comment,
-            effective_from,
-            created_at,
-            updated_at
-        )
-
-        VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-    """, (
-        1
-        if normalized[
-            "enabled"
-        ]
-        else 0,
-
-        normalized[
-            "action"
-        ],
-
-        normalized[
-            "time_minutes"
-        ],
-
-        normalized[
-            "days_mask"
-        ],
-
-        normalized[
-            "scope"
-        ],
-
-        normalized[
-            "comment"
-        ],
-
-        # New rules never affect an occurrence
-        # that already happened before creation.
+    rule = create_schedule_rule(
+        normalized,
         now_epoch,
-
-        now_epoch,
-        now_epoch,
-    ))
-
-
-    rule_id = (
-        cur.lastrowid
     )
-
-    conn.commit()
-
-
-    rule = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
-
-    conn.close()
-
+    rule_id = rule["id"]
 
     log_event(
         source="SYSTEM",
@@ -1555,24 +1463,19 @@ async def api_schedule_rule_create(
             +
             (
                 f" - {normalized['comment']}"
-                if normalized[
-                    "comment"
-                ]
+                if normalized["comment"]
                 else ""
             )
         ),
     )
 
-
     return {
-        "success":
-            True,
-
-        "rule":
-            schedule_rule_dict(
-                rule
-            ),
+        "success": True,
+        "rule": schedule_rule_dict(
+            rule
+        ),
     }
+
 
 
 @app.put(
@@ -1585,60 +1488,35 @@ async def api_schedule_rule_update(
 
     ensure_schedule_rules_schema()
 
-
-    conn = db()
-
-    current = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
-    conn.close()
-
+    current = get_schedule_rule(
+        rule_id
+    )
 
     if not current:
-
         raise HTTPException(
             status_code=404,
             detail="Schedule rule not found",
         )
 
-
     try:
-
         data = await request.json()
-
     except Exception:
-
         raise HTTPException(
             status_code=400,
             detail="Invalid JSON body",
         )
 
-
-    normalized = (
-        schedule_normalize_input(
-            data,
-            current=current,
-        )
+    normalized = schedule_normalize_input(
+        data,
+        current=current,
     )
 
-
-    conflict = (
-        schedule_conflicting_rule(
-            normalized,
-            exclude_id=rule_id,
-        )
+    conflict = schedule_conflicting_rule(
+        normalized,
+        exclude_id=rule_id,
     )
-
 
     if conflict:
-
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1649,150 +1527,34 @@ async def api_schedule_rule_update(
             ),
         )
 
-
     schedule_changed = (
-        str(
-            current[
-                "action"
-            ]
-        )
-        !=
-        normalized[
-            "action"
-        ]
-
-        or
-
-        int(
-            current[
-                "time_minutes"
-            ]
-        )
-        !=
-        normalized[
-            "time_minutes"
-        ]
-
-        or
-
-        int(
-            current[
-                "days_mask"
-            ]
-        )
-        !=
-        normalized[
-            "days_mask"
-        ]
-
-        or
-
-        (
-            not bool(
-                current[
-                    "enabled"
-                ]
-            )
-            and
-            normalized[
-                "enabled"
-            ]
+        str(current["action"]) != normalized["action"]
+        or int(current["time_minutes"]) != normalized["time_minutes"]
+        or int(current["days_mask"]) != normalized["days_mask"]
+        or (
+            not bool(current["enabled"])
+            and normalized["enabled"]
         )
     )
-
 
     now_epoch = int(
         time.time()
     )
 
-
     effective_from = int(
-        current[
-            "effective_from"
-        ]
+        current["effective_from"]
         or 0
     )
 
+    if normalized["enabled"] and schedule_changed:
+        effective_from = now_epoch
 
-    if (
-        normalized[
-            "enabled"
-        ]
-        and
-        schedule_changed
-    ):
-
-        effective_from = (
-            now_epoch
-        )
-
-
-    conn = db()
-
-    conn.execute("""
-        UPDATE schedule_rules
-
-        SET
-            enabled=?,
-            action=?,
-            time_minutes=?,
-            days_mask=?,
-            scope=?,
-            comment=?,
-            effective_from=?,
-            last_run_key=NULL,
-            updated_at=?
-
-        WHERE id=?
-    """, (
-        1
-        if normalized[
-            "enabled"
-        ]
-        else 0,
-
-        normalized[
-            "action"
-        ],
-
-        normalized[
-            "time_minutes"
-        ],
-
-        normalized[
-            "days_mask"
-        ],
-
-        normalized[
-            "scope"
-        ],
-
-        normalized[
-            "comment"
-        ],
-
+    rule = update_schedule_rule(
+        rule_id,
+        normalized,
         effective_from,
         now_epoch,
-        rule_id,
-    ))
-
-
-    conn.commit()
-
-
-    rule = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
-
-    conn.close()
-
+    )
 
     log_event(
         source="SYSTEM",
@@ -1806,16 +1568,13 @@ async def api_schedule_rule_update(
         ),
     )
 
-
     return {
-        "success":
-            True,
-
-        "rule":
-            schedule_rule_dict(
-                rule
-            ),
+        "success": True,
+        "rule": schedule_rule_dict(
+            rule
+        ),
     }
+
 
 
 @app.post(
@@ -1827,82 +1586,36 @@ def api_schedule_rule_toggle(
 
     ensure_schedule_rules_schema()
 
-
-    conn = db()
-
-    current = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
-    conn.close()
-
+    current = get_schedule_rule(
+        rule_id
+    )
 
     if not current:
-
         raise HTTPException(
             status_code=404,
             detail="Schedule rule not found",
         )
 
-
-    new_enabled = (
-        not bool(
-            current[
-                "enabled"
-            ]
-        )
+    new_enabled = not bool(
+        current["enabled"]
     )
 
-
     normalized = {
-        "enabled":
-            new_enabled,
-
-        "action":
-            current[
-                "action"
-            ],
-
-        "time_minutes":
-            current[
-                "time_minutes"
-            ],
-
-        "days_mask":
-            current[
-                "days_mask"
-            ],
-
-        "scope":
-            current[
-                "scope"
-            ],
-
-        "comment":
-            current[
-                "comment"
-            ],
+        "enabled": new_enabled,
+        "action": current["action"],
+        "time_minutes": current["time_minutes"],
+        "days_mask": current["days_mask"],
+        "scope": current["scope"],
+        "comment": current["comment"],
     }
 
-
     if new_enabled:
-
-        conflict = (
-            schedule_conflicting_rule(
-                normalized,
-                exclude_id=rule_id,
-            )
+        conflict = schedule_conflicting_rule(
+            normalized,
+            exclude_id=rule_id,
         )
 
-
         if conflict:
-
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -1911,86 +1624,44 @@ def api_schedule_rule_toggle(
                 ),
             )
 
-
     now_epoch = int(
         time.time()
     )
 
-
-    conn = db()
-
-    conn.execute("""
-        UPDATE schedule_rules
-
-        SET
-            enabled=?,
-            effective_from=?,
-            last_run_key=NULL,
-            updated_at=?
-
-        WHERE id=?
-    """, (
-        1
+    effective_from = (
+        now_epoch
         if new_enabled
-        else 0,
+        else int(
+            current["effective_from"]
+            or 0
+        )
+    )
 
-        (
-            now_epoch
-            if new_enabled
-            else int(
-                current[
-                    "effective_from"
-                ]
-                or 0
-            )
-        ),
-
+    rule = set_schedule_rule_enabled(
+        rule_id,
+        new_enabled,
+        effective_from,
         now_epoch,
-        rule_id,
-    ))
-
-
-    conn.commit()
-
-
-    rule = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
-
-    conn.close()
-
+    )
 
     log_event(
         source="SYSTEM",
         action=(
             "SCHEDULE_RULE_ENABLE"
             if new_enabled
-            else
-            "SCHEDULE_RULE_DISABLE"
+            else "SCHEDULE_RULE_DISABLE"
         ),
         success=True,
-        message=(
-            f"Rule #{rule_id}"
-        ),
+        message=f"Rule #{rule_id}",
     )
 
-
     return {
-        "success":
-            True,
-
-        "rule":
-            schedule_rule_dict(
-                rule
-            ),
+        "success": True,
+        "rule": schedule_rule_dict(
+            rule
+        ),
     }
+
 
 
 @app.delete(
@@ -2002,42 +1673,15 @@ def api_schedule_rule_delete(
 
     ensure_schedule_rules_schema()
 
-
-    conn = db()
-
-    current = conn.execute("""
-        SELECT *
-
-        FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    )).fetchone()
-
+    current = delete_schedule_rule(
+        rule_id
+    )
 
     if not current:
-
-        conn.close()
-
         raise HTTPException(
             status_code=404,
             detail="Schedule rule not found",
         )
-
-
-    conn.execute("""
-        DELETE FROM schedule_rules
-
-        WHERE id=?
-    """, (
-        rule_id,
-    ))
-
-
-    conn.commit()
-    conn.close()
-
 
     log_event(
         source="SYSTEM",
@@ -2051,14 +1695,11 @@ def api_schedule_rule_delete(
         ),
     )
 
-
     return {
-        "success":
-            True,
-
-        "deleted":
-            rule_id,
+        "success": True,
+        "deleted": rule_id,
     }
+
 
 @app.post(
     "/api/scheduler/toggle"

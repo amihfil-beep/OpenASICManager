@@ -29,6 +29,12 @@ __all__ = (
     "desired_state",
     "schedule_conflicting_rule",
     "next_transition",
+    "list_schedule_rules",
+    "get_schedule_rule",
+    "create_schedule_rule",
+    "update_schedule_rule",
+    "set_schedule_rule_enabled",
+    "delete_schedule_rule",
 )
 
 
@@ -325,3 +331,192 @@ def next_transition(
     return min(
         candidates
     )
+
+def list_schedule_rules():
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        return conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            ORDER BY time_minutes, id
+        """).fetchall()
+    finally:
+        conn.close()
+
+
+def get_schedule_rule(rule_id):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        return conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            WHERE id=?
+        """, (
+            int(rule_id),
+        )).fetchone()
+    finally:
+        conn.close()
+
+
+def create_schedule_rule(
+    normalized,
+    now_epoch,
+):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        cur = conn.execute("""
+            INSERT INTO schedule_rules
+            (
+                enabled,
+                action,
+                time_minutes,
+                days_mask,
+                scope,
+                comment,
+                effective_from,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            1 if normalized["enabled"] else 0,
+            normalized["action"],
+            normalized["time_minutes"],
+            normalized["days_mask"],
+            normalized["scope"],
+            normalized["comment"],
+            int(now_epoch),
+            int(now_epoch),
+            int(now_epoch),
+        ))
+
+        rule_id = cur.lastrowid
+        conn.commit()
+
+        return conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            WHERE id=?
+        """, (
+            rule_id,
+        )).fetchone()
+    finally:
+        conn.close()
+
+
+def update_schedule_rule(
+    rule_id,
+    normalized,
+    effective_from,
+    now_epoch,
+):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        conn.execute("""
+            UPDATE schedule_rules
+            SET
+                enabled=?,
+                action=?,
+                time_minutes=?,
+                days_mask=?,
+                scope=?,
+                comment=?,
+                effective_from=?,
+                last_run_key=NULL,
+                updated_at=?
+            WHERE id=?
+        """, (
+            1 if normalized["enabled"] else 0,
+            normalized["action"],
+            normalized["time_minutes"],
+            normalized["days_mask"],
+            normalized["scope"],
+            normalized["comment"],
+            int(effective_from),
+            int(now_epoch),
+            int(rule_id),
+        ))
+        conn.commit()
+
+        return conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            WHERE id=?
+        """, (
+            int(rule_id),
+        )).fetchone()
+    finally:
+        conn.close()
+
+
+def set_schedule_rule_enabled(
+    rule_id,
+    enabled,
+    effective_from,
+    now_epoch,
+):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        conn.execute("""
+            UPDATE schedule_rules
+            SET
+                enabled=?,
+                effective_from=?,
+                last_run_key=NULL,
+                updated_at=?
+            WHERE id=?
+        """, (
+            1 if enabled else 0,
+            int(effective_from),
+            int(now_epoch),
+            int(rule_id),
+        ))
+        conn.commit()
+
+        return conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            WHERE id=?
+        """, (
+            int(rule_id),
+        )).fetchone()
+    finally:
+        conn.close()
+
+
+def delete_schedule_rule(rule_id):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        current = conn.execute("""
+            SELECT *
+            FROM schedule_rules
+            WHERE id=?
+        """, (
+            int(rule_id),
+        )).fetchone()
+
+        if current is None:
+            return None
+
+        conn.execute("""
+            DELETE FROM schedule_rules
+            WHERE id=?
+        """, (
+            int(rule_id),
+        ))
+        conn.commit()
+        return current
+    finally:
+        conn.close()

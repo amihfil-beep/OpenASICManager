@@ -70,6 +70,10 @@ from control.queue import (
     QueueRuntime,
 )
 
+from control.repository import (
+    list_active_control_jobs,
+)
+
 from scheduler.policy import (
     schedule_time_string,
     schedule_days_string,
@@ -157,6 +161,18 @@ from notifications.telegram import (
 from monitoring.service import (
     POLL_INTERVAL,
     MonitoringRuntime,
+)
+
+from inventory.repository import (
+    list_miners,
+    set_miner_enabled,
+    set_miner_schedule_enabled,
+    set_all_schedule_enabled,
+    clear_manual_overrides,
+)
+
+from inventory.analytics import (
+    miner_status_items,
 )
 
 from audit.identity import (
@@ -1084,232 +1100,40 @@ def health():
 
 @app.get("/api/status")
 def api_status():
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM miners
-    """).fetchall()
-
-
-    active_job_rows = conn.execute("""
-        SELECT *
-
-        FROM control_jobs
-
-        WHERE status IN (
-            'QUEUED',
-            'RUNNING'
-        )
-
-        ORDER BY id DESC
-    """).fetchall()
-
-
-    conn.close()
-
-
-    active_jobs = {}
-
-    for job in active_job_rows:
-
-        if (
-            job["miner_id"]
-            not in active_jobs
-        ):
-
-            active_jobs[
-                job["miner_id"]
-            ] = job
-
-
-    miners = []
-
-    for row in rows:
-
-        miners.append(
-            row
-        )
-
-    miners.sort(
-        key=lambda row:
-            ipaddress.ip_address(
-                row["ip"]
-            )
-    )
+    rows = list_miners()
+    active_job_rows = list_active_control_jobs()
 
     now = datetime.now(
         MOSCOW
     )
-
-    result = []
-
-    for row in miners:
-
-        state = (
-            row["last_state"]
-            or "UNKNOWN"
-        )
-
-        if (
-            row["driver"]
-            == "unset"
-        ):
-            state = (
-                "CONFIG_REQUIRED"
-            )
-
-        result.append({
-            "id":
-                row["id"],
-
-            "name":
-                row["name"],
-
-            "ip":
-                row["ip"],
-
-            "driver":
-                row["driver"],
-
-            "detection_mode":
-                (
-                    row["detection_mode"]
-                    or "AUTO"
-                ),
-
-            "enabled":
-                bool(
-                    row["enabled"]
-                ),
-
-            "schedule_enabled":
-                bool(
-                    row[
-                        "schedule_enabled"
-                    ]
-                ),
-
-            "model":
-                row["model"],
-
-            "firmware":
-                row["firmware"],
-
-            "state":
-                state,
-
-            "hashrate":
-                row["hashrate"],
-
-            "avg_hashrate":
-                row[
-                    "avg_hashrate"
-                ],
-
-            "temp":
-                row["temp"],
-
-            "power":
-                row["power"],
-
-            "pool":
-                row["pool"],
-
-            "last_seen":
-                row["last_seen"],
-
-            "last_error":
-                row["last_error"],
-
-            "last_action":
-                row["last_action"],
-
-            "manual_override_until":
-                row[
-                    "manual_override_until"
-                ],
-
-            "control_job":
-                (
-                    {
-                        "id":
-                            active_jobs[
-                                row["id"]
-                            ]["id"],
-
-                        "status":
-                            active_jobs[
-                                row["id"]
-                            ]["status"],
-
-                        "action":
-                            active_jobs[
-                                row["id"]
-                            ]["action"],
-
-                        "target_state":
-                            active_jobs[
-                                row["id"]
-                            ]["target_state"],
-
-                        "attempts":
-                            active_jobs[
-                                row["id"]
-                            ]["attempts"],
-
-                        "max_attempts":
-                            active_jobs[
-                                row["id"]
-                            ]["max_attempts"],
-
-                        "message":
-                            active_jobs[
-                                row["id"]
-                            ]["message"],
-                    }
-
-                    if row["id"]
-                    in active_jobs
-
-                    else None
-                ),
-        })
+    upcoming = next_transition(
+        now
+    )
 
     return {
         "version": "0.1.2",
-
-        "now":
-            now.isoformat(),
-
-        "scheduler_enabled":
-            (
-                get_setting(
-                    "scheduler_enabled",
-                    "0",
-                )
-                == "1"
-            ),
-
-        "desired_state":
-            desired_state(
-                now
-            ),
-
-        "next_transition":
-            (
-                next_transition(
-                    now
-                ).isoformat()
-                if next_transition(
-                    now
-                )
-                else None
-            ),
-
-        "miners":
-            result,
+        "now": now.isoformat(),
+        "scheduler_enabled": (
+            get_setting(
+                "scheduler_enabled",
+                "0",
+            )
+            == "1"
+        ),
+        "desired_state": desired_state(
+            now
+        ),
+        "next_transition": (
+            upcoming.isoformat()
+            if upcoming
+            else None
+        ),
+        "miners": miner_status_items(
+            rows,
+            active_job_rows,
+        ),
     }
+
 
 
 
@@ -2461,46 +2285,31 @@ def toggle_enabled(
     )
 
     if not miner:
-
         raise HTTPException(
             status_code=404,
             detail="Miner not found",
         )
 
-    new_value = (
-        0
-        if miner["enabled"]
-        else 1
+    new_value = not bool(
+        miner["enabled"]
     )
 
-    conn = db()
-
-    conn.execute("""
-        UPDATE miners
-        SET enabled=?
-        WHERE id=?
-    """, (
-        new_value,
+    set_miner_enabled(
         miner_id,
-    ))
-
-    conn.commit()
-    conn.close()
+        new_value,
+    )
 
     if new_value:
-
         threading.Thread(
             target=poll_miner,
-            args=(
-                miner_id,
-            ),
+            args=(miner_id,),
             daemon=True,
         ).start()
 
     return {
-        "enabled":
-            bool(new_value)
+        "enabled": new_value
     }
+
 
 
 @app.post(
@@ -2514,50 +2323,30 @@ def toggle_schedule(
     )
 
     if not miner:
-
         raise HTTPException(
             status_code=404,
             detail="Miner not found",
         )
 
-    if (
-        miner["driver"]
-        == "unset"
-    ):
-
+    if miner["driver"] == "unset":
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Configure firmware first"
-            ),
+            detail="Configure firmware first",
         )
 
-    new_value = (
-        0
-        if miner[
-            "schedule_enabled"
-        ]
-        else 1
+    new_value = not bool(
+        miner["schedule_enabled"]
     )
 
-    conn = db()
-
-    conn.execute("""
-        UPDATE miners
-        SET schedule_enabled=?
-        WHERE id=?
-    """, (
-        new_value,
+    set_miner_schedule_enabled(
         miner_id,
-    ))
-
-    conn.commit()
-    conn.close()
+        new_value,
+    )
 
     return {
-        "schedule_enabled":
-            bool(new_value)
+        "schedule_enabled": new_value
     }
+
 
 
 @app.post(
@@ -2621,48 +2410,25 @@ def unconfigured_to_stock():
     "/api/schedule/all/{state}"
 )
 def schedule_all(state: str):
-
     if state not in (
         "on",
         "off",
     ):
-
         raise HTTPException(
             status_code=400,
             detail="Invalid state",
         )
 
-    value = (
-        1
-        if state == "on"
-        else 0
+    enabled = state == "on"
+    changed = set_all_schedule_enabled(
+        enabled
     )
-
-    conn = db()
-
-    cur = conn.execute("""
-        UPDATE miners
-        SET schedule_enabled=?
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """, (
-        value,
-    ))
-
-    changed = cur.rowcount
-
-    conn.commit()
-    conn.close()
 
     log_event(
         source="SYSTEM",
         action=(
             "SCHEDULE_ALL_ON"
-            if value
+            if enabled
             else "SCHEDULE_ALL_OFF"
         ),
         success=True,
@@ -2671,28 +2437,17 @@ def schedule_all(state: str):
 
     return {
         "success": True,
-        "schedule_enabled": bool(value),
+        "schedule_enabled": enabled,
         "changed": changed,
     }
+
 
 
 @app.post(
     "/api/overrides/clear"
 )
 def clear_overrides():
-
-    conn = db()
-
-    cur = conn.execute("""
-        UPDATE miners
-        SET manual_override_until=NULL
-        WHERE manual_override_until IS NOT NULL
-    """)
-
-    changed = cur.rowcount
-
-    conn.commit()
-    conn.close()
+    changed = clear_manual_overrides()
 
     log_event(
         source="SYSTEM",
@@ -2705,6 +2460,7 @@ def clear_overrides():
         "success": True,
         "changed": changed,
     }
+
 
 
 @app.get(

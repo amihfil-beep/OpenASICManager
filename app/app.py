@@ -50,10 +50,6 @@ from db import (
     get_control_miners,
     init_db,
     ensure_schedule_rules_schema,
-    get_control_job,
-    get_active_control_job,
-    update_control_job,
-    set_last_command,
 )
 
 from discovery import scan_network, detect_host

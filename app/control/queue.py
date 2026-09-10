@@ -14,10 +14,12 @@ import time
 
 from concurrent.futures import ThreadPoolExecutor
 
-from db import (
-    db,
-    get_miner,
+from db import get_miner
+
+from control.repository import (
+    create_control_job,
     get_active_control_job,
+    set_manual_override,
 )
 
 from control.policy import (
@@ -110,136 +112,53 @@ def queue_reboot(
         miner_id
     )
 
-
     if not miner:
-
         raise RuntimeError(
             "Miner not found"
         )
 
-
     if not miner["enabled"]:
-
         raise RuntimeError(
             "ASIC is disabled"
         )
-
 
     if miner["driver"] not in (
         "awesome",
         "bitmain_stock",
     ):
-
         raise RuntimeError(
             "Firmware does not support reboot"
         )
 
-
-    # IMPORTANT:
-    # Manual reboot does NOT create a manual schedule
-    # override. Scheduler remains responsible for the
-    # desired state after the device returns.
-
+    # Manual reboot does not create a schedule override.
     with control_queue_lock:
-
-        active = (
-            get_active_control_job(
-                miner_id
-            )
+        active = get_active_control_job(
+            miner_id
         )
-
 
         if active:
-
             return {
-                "queued":
-                    False,
-
-                "already_active":
-                    True,
-
-                "job_id":
-                    active["id"],
-
-                "status":
-                    active["status"],
-
-                "action":
-                    active["action"],
-
-                "target_state":
-                    active[
-                        "target_state"
-                    ],
+                "queued": False,
+                "already_active": True,
+                "job_id": active["id"],
+                "status": active["status"],
+                "action": active["action"],
+                "target_state": active["target_state"],
             }
 
-
-        now = int(
-            time.time()
+        now = int(time.time())
+        source = runtime.audit_source(
+            "MANUAL"
         )
 
-
-        conn = db()
-
-
-        cur = conn.execute("""
-            INSERT INTO control_jobs
-            (
-                created_at,
-                miner_id,
-                ip,
-                name,
-                source,
-                action,
-                target_state,
-                status,
-                attempts,
-                max_attempts
-            )
-
-            VALUES (
-                ?,
-                ?,
-                ?,
-                ?,
-                'MANUAL',
-                'reboot',
-                'REBOOTED',
-                'QUEUED',
-                0,
-                1
-            )
-        """, (
-            now,
-            miner_id,
-            miner["ip"],
-            miner["name"],
-        ))
-
-
-        job_id = (
-            cur.lastrowid
+        job_id = create_control_job(
+            miner=miner,
+            source=source,
+            action="reboot",
+            target_state="REBOOTED",
+            max_attempts=1,
+            now=now,
         )
-
-
-        conn.execute(
-            """
-            UPDATE control_jobs
-            SET source=?
-            WHERE id=?
-            """,
-            (
-                runtime.audit_source(
-                    "MANUAL"
-                ),
-                job_id,
-            ),
-        )
-
-
-        conn.commit()
-        conn.close()
-
 
     runtime.log_event(
         source="MANUAL",
@@ -252,33 +171,21 @@ def queue_reboot(
         ),
     )
 
-
     control_executor.submit(
         reboot_worker,
         runtime.control_runtime,
         job_id,
     )
 
-
     return {
-        "queued":
-            True,
-
-        "already_active":
-            False,
-
-        "job_id":
-            job_id,
-
-        "status":
-            "QUEUED",
-
-        "action":
-            "reboot",
-
-        "target_state":
-            "REBOOTED",
+        "queued": True,
+        "already_active": False,
+        "job_id": job_id,
+        "status": "QUEUED",
+        "action": "reboot",
+        "target_state": "REBOOTED",
     }
+
 
 
 def queue_control(
@@ -292,39 +199,31 @@ def queue_control(
         "pause",
         "resume",
     ):
-
         raise RuntimeError(
             "Invalid action"
         )
-
 
     miner = get_miner(
         miner_id
     )
 
     if not miner:
-
         raise RuntimeError(
             "Miner not found"
         )
 
-
     if not miner["enabled"]:
-
         raise RuntimeError(
             "ASIC is disabled"
         )
-
 
     if miner["driver"] not in (
         "awesome",
         "bitmain_stock",
     ):
-
         raise RuntimeError(
             "Firmware is not configured"
         )
-
 
     source = (
         runtime.audit_source(
@@ -334,116 +233,49 @@ def queue_control(
         else "SCHEDULER"
     )
 
-
     target = control_target(
         action
     )
 
-
     with control_queue_lock:
-
-        active = (
-            get_active_control_job(
-                miner_id
-            )
+        active = get_active_control_job(
+            miner_id
         )
 
-
         if active:
-
             return {
                 "queued": False,
                 "already_active": True,
                 "job_id": active["id"],
                 "status": active["status"],
                 "action": active["action"],
-                "target_state":
-                    active["target_state"],
+                "target_state": active["target_state"],
             }
 
-
-        now = int(
-            time.time()
-        )
-
+        now = int(time.time())
 
         if manual:
-
             override_until = int(
                 runtime.next_transition()
                 .timestamp()
             )
-
-            conn = db()
-
-            conn.execute("""
-                UPDATE miners
-
-                SET manual_override_until=?
-
-                WHERE id=?
-            """, (
+            set_manual_override(
+                miner_id,
                 override_until,
-                miner_id,
-            ))
-
-            conn.commit()
-            conn.close()
-
-
-        conn = db()
-
-        cur = conn.execute("""
-            INSERT INTO control_jobs
-            (
-                created_at,
-                miner_id,
-                ip,
-                name,
-                source,
-                action,
-                target_state,
-                status,
-                attempts,
-                max_attempts
             )
 
-            VALUES (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                'QUEUED',
-                0,
-                ?
-            )
-        """, (
-            now,
-            miner_id,
-            miner["ip"],
-            miner["name"],
-            source,
-            action,
-            target,
-            CONTROL_MAX_ATTEMPTS,
-        ))
-
-        job_id = (
-            cur.lastrowid
+        job_id = create_control_job(
+            miner=miner,
+            source=source,
+            action=action,
+            target_state=target,
+            max_attempts=CONTROL_MAX_ATTEMPTS,
+            now=now,
         )
-
-        conn.commit()
-        conn.close()
-
 
     runtime.log_event(
         source=source,
-        action=(
-            f"{action.upper()}_QUEUED"
-        ),
+        action=f"{action.upper()}_QUEUED",
         miner=miner,
         success=True,
         message=(
@@ -452,13 +284,11 @@ def queue_control(
         ),
     )
 
-
     control_executor.submit(
         verified_control_worker,
         runtime.control_runtime,
         job_id,
     )
-
 
     return {
         "queued": True,

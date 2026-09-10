@@ -241,8 +241,36 @@ def transition_anomaly_condition(
     return opened, resolved
 
 
+def issue_rows(limit=100):
+    """Return active issues and the most recently resolved issues."""
+    limit = max(1, int(limit))
+    conn = db()
+    try:
+        active = conn.execute("""
+            SELECT * FROM issues
+            WHERE status='ACTIVE'
+            ORDER BY
+                CASE severity
+                    WHEN 'CRITICAL' THEN 1
+                    WHEN 'WARNING' THEN 2
+                    ELSE 3
+                END,
+                first_seen ASC
+        """).fetchall()
+        resolved = conn.execute("""
+            SELECT * FROM issues
+            WHERE status='RESOLVED'
+            ORDER BY resolved_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return list(active), list(resolved)
+    finally:
+        conn.close()
+
+
 __all__ = (
     "active_issue_exists",
     "anomaly_scan_snapshot",
     "transition_anomaly_condition",
+    "issue_rows",
 )

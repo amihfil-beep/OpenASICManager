@@ -133,6 +133,8 @@ from anomalies.service import (
     AnomalyRuntime,
 )
 
+from anomalies.analytics import issue_report
+
 from notifications.telegram import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
@@ -3195,139 +3197,12 @@ def api_notifications_test():
 def api_issues(
     limit: int = 100,
 ):
-
     limit = max(
         1,
-        min(
-            int(limit),
-            500,
-        ),
+        min(int(limit), 500),
     )
+    return issue_report(limit)
 
-
-    conn = db()
-
-
-    active_rows = conn.execute("""
-        SELECT *
-
-        FROM issues
-
-        WHERE status='ACTIVE'
-
-        ORDER BY
-            CASE severity
-                WHEN 'CRITICAL' THEN 1
-                WHEN 'WARNING' THEN 2
-                ELSE 3
-            END,
-            first_seen ASC
-    """).fetchall()
-
-
-    resolved_rows = conn.execute("""
-        SELECT *
-
-        FROM issues
-
-        WHERE status='RESOLVED'
-
-        ORDER BY resolved_at DESC
-
-        LIMIT ?
-    """, (
-        limit,
-    )).fetchall()
-
-
-    conn.close()
-
-
-    def convert(row):
-
-        return {
-            "id":
-                row["id"],
-
-            "miner_id":
-                row["miner_id"],
-
-            "ip":
-                row["ip"],
-
-            "name":
-                row["name"],
-
-            "code":
-                row["code"],
-
-            "severity":
-                row["severity"],
-
-            "status":
-                row["status"],
-
-            "first_seen":
-                datetime.fromtimestamp(
-                    row["first_seen"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "last_seen":
-                datetime.fromtimestamp(
-                    row["last_seen"],
-                    MOSCOW,
-                ).isoformat(),
-
-            "resolved_at":
-                (
-                    datetime.fromtimestamp(
-                        row["resolved_at"],
-                        MOSCOW,
-                    ).isoformat()
-
-                    if row["resolved_at"]
-                    else None
-                ),
-
-            "message":
-                row["message"],
-        }
-
-
-    return {
-        "active_count":
-            len(active_rows),
-
-        "active":
-            [
-                convert(row)
-                for row in active_rows
-            ],
-
-        "recent_resolved":
-            [
-                convert(row)
-                for row in resolved_rows
-            ],
-
-        "thresholds": {
-            "offline_grace_seconds":
-                ANOMALY_OFFLINE_GRACE,
-
-            "hot_open_c":
-                ANOMALY_HOT_TEMP,
-
-            "hot_clear_c":
-                ANOMALY_HOT_CLEAR,
-
-            "hot_grace_seconds":
-                ANOMALY_HOT_GRACE,
-
-            "schedule_grace_seconds":
-                ANOMALY_SCHEDULE_GRACE,
-        },
-    }
 
 
 # ============================================================

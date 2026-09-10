@@ -10,10 +10,14 @@ import requests
 
 import config as app_config
 from db import (
-    db,
     get_setting,
     set_setting,
     get_miner,
+)
+
+from notifications.repository import (
+    find_issue_context,
+    list_farm_summary_rows,
 )
 
 TIMEZONE_NAME = app_config.TIMEZONE
@@ -389,113 +393,18 @@ def telegram_issue_context(
     if miner_id is None:
         return result
 
-    conn = None
-
     try:
 
-        conn = db()
-
-        schema = conn.execute(
-            "PRAGMA table_info(issues)"
-        ).fetchall()
-
-        columns = {
-            row["name"]
-            for row in schema
-        }
-
-        if (
-            not columns
-            or
-            "miner_id" not in columns
-        ):
-            return result
-
-
-        where = [
-            "miner_id=?"
-        ]
-
-        params = [
-            miner_id
-        ]
-
-
-        if "status" in columns:
-
-            if action == "ISSUE_OPEN":
-
-                where.append(
-                    "status='ACTIVE'"
-                )
-
-            elif action == "ISSUE_RESOLVED":
-
-                where.append(
-                    "status='RESOLVED'"
-                )
-
-
-        order_column = "id"
-
-        for candidate in (
-            "resolved_at",
-            "closed_at",
-            "last_seen",
-            "opened_at",
-            "created_at",
-            "id",
-        ):
-            if candidate in columns:
-
-                order_column = candidate
-                break
-
-
-        sql = (
-            "SELECT * "
-            "FROM issues "
-            "WHERE "
-            + " AND ".join(where)
-            + f" ORDER BY {order_column} DESC "
-            "LIMIT 1"
+        result = find_issue_context(
+            miner_id,
+            action,
         )
 
-
-        row = conn.execute(
-            sql,
-            params,
-        ).fetchone()
-
-
-        # Some older issue schemas may use another
-        # status value. Fall back to the newest issue.
-        if row is None:
-
-            row = conn.execute(
-                """
-                SELECT *
-                FROM issues
-                WHERE miner_id=?
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (
-                    miner_id,
-                ),
-            ).fetchone()
-
-
-        if row is None:
+        if not result:
             return result
-
-
-        result = dict(row)
-
 
         start_ts = None
         end_ts = None
-
 
         for column in (
             "opened_at",
@@ -512,7 +421,6 @@ def telegram_issue_context(
                 start_ts = result[column]
                 break
 
-
         for column in (
             "resolved_at",
             "closed_at",
@@ -527,7 +435,6 @@ def telegram_issue_context(
             ):
                 end_ts = result[column]
                 break
-
 
         if (
             action == "ISSUE_RESOLVED"
@@ -554,9 +461,7 @@ def telegram_issue_context(
             except Exception:
                 pass
 
-
         return result
-
 
     except Exception as exc:
 
@@ -567,15 +472,6 @@ def telegram_issue_context(
 
         return result
 
-
-    finally:
-
-        if conn is not None:
-
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 def telegram_parse_control_message(
@@ -1081,54 +977,9 @@ def telegram_summary_set_last_date(
 
 def telegram_farm_summary_data():
 
-    conn = db()
-
-    try:
-
-        miners = conn.execute(
-            """
-            SELECT
-                id,
-                name,
-                ip,
-                driver,
-                enabled,
-                last_state,
-                hashrate,
-                avg_hashrate,
-                temp,
-                power,
-                last_seen
-            FROM miners
-            WHERE enabled=1
-            ORDER BY ip
-            """
-        ).fetchall()
-
-
-        issues = conn.execute(
-            """
-            SELECT
-                i.id,
-                i.miner_id,
-                i.code,
-                m.name,
-                m.ip
-            FROM issues i
-
-            LEFT JOIN miners m
-                ON m.id=i.miner_id
-
-            WHERE i.status='ACTIVE'
-
-            ORDER BY i.id DESC
-            """
-        ).fetchall()
-
-
-    finally:
-        conn.close()
-
+    miners, issues = (
+        list_farm_summary_rows()
+    )
 
     state_counts = {}
 
@@ -1138,7 +989,6 @@ def telegram_farm_summary_data():
 
     total_known_power = 0.0
     known_power_count = 0
-
 
     for miner in miners:
 
@@ -1154,7 +1004,6 @@ def telegram_farm_summary_data():
                 "UNKNOWN"
             ).upper()
 
-
         state_counts[state] = (
             state_counts.get(
                 state,
@@ -1164,7 +1013,6 @@ def telegram_farm_summary_data():
             1
         )
 
-
         if miner["hashrate"] is not None:
 
             try:
@@ -1173,7 +1021,6 @@ def telegram_farm_summary_data():
                 )
             except Exception:
                 pass
-
 
         if miner["temp"] is not None:
 
@@ -1185,7 +1032,6 @@ def telegram_farm_summary_data():
                 )
             except Exception:
                 pass
-
 
         if miner["power"] is not None:
 
@@ -1202,7 +1048,6 @@ def telegram_farm_summary_data():
 
             except Exception:
                 pass
-
 
     return {
         "miners":
@@ -1229,6 +1074,7 @@ def telegram_farm_summary_data():
         "issues":
             issues,
     }
+
 
 
 def telegram_summary_hashrate(

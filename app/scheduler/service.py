@@ -10,10 +10,7 @@ signalling are supplied explicitly through SchedulerRuntime.
 
 from datetime import datetime
 
-from db import (
-    db,
-    get_setting,
-)
+from db import get_setting
 
 from scheduler.policy import (
     MOSCOW,
@@ -22,6 +19,8 @@ from scheduler.policy import (
 )
 
 from scheduler.repository import (
+    list_schedulable_miners,
+    mark_schedule_rule_seen,
     schedule_state_details,
 )
 
@@ -87,33 +86,10 @@ def schedule_mark_rule_seen(
     )
 
 
-    conn = db()
-
-    cur = conn.execute("""
-        UPDATE schedule_rules
-
-        SET last_run_key=?
-
-        WHERE
-            id=?
-            AND COALESCE(
-                last_run_key,
-                ''
-            ) <> ?
-    """, (
-        run_key,
+    changed = mark_schedule_rule_seen(
         rule["id"],
         run_key,
-    ))
-
-
-    changed = (
-        cur.rowcount
-        > 0
     )
-
-    conn.commit()
-    conn.close()
 
 
     if changed:
@@ -174,21 +150,7 @@ def scheduler_loop(runtime):
                     active_occurrence,
                 )
 
-            conn = db()
-
-            miners = conn.execute("""
-                SELECT *
-                FROM miners
-                WHERE
-                    enabled=1
-                    AND schedule_enabled=1
-                    AND driver IN (
-                        'awesome',
-                        'bitmain_stock'
-                    )
-            """).fetchall()
-
-            conn.close()
+            miners = list_schedulable_miners()
 
             for miner in miners:
 

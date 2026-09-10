@@ -158,6 +158,10 @@ from api.audit_auth import (
     create_audit_auth_router,
 )
 
+from api.system import (
+    create_system_router,
+)
+
 from monitoring.service import (
     POLL_INTERVAL,
     MonitoringRuntime,
@@ -721,6 +725,10 @@ app.include_router(
     )
 )
 
+app.include_router(
+    create_system_router()
+)
+
 
 
 @app.middleware(
@@ -775,53 +783,8 @@ async def audit_user_middleware(
 # API
 # ============================================================
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "version": "0.1.2",
-        "time":
-            datetime.now(
-                MOSCOW
-            ).isoformat(),
-    }
 
 
-@app.get("/api/status")
-def api_status():
-    rows = list_miners()
-    active_job_rows = list_active_control_jobs()
-
-    now = datetime.now(
-        MOSCOW
-    )
-    upcoming = next_transition(
-        now
-    )
-
-    return {
-        "version": "0.1.2",
-        "now": now.isoformat(),
-        "scheduler_enabled": (
-            get_setting(
-                "scheduler_enabled",
-                "0",
-            )
-            == "1"
-        ),
-        "desired_state": desired_state(
-            now
-        ),
-        "next_transition": (
-            upcoming.isoformat()
-            if upcoming
-            else None
-        ),
-        "miners": miner_status_items(
-            rows,
-            active_job_rows,
-        ),
-    }
 
 
 

@@ -35,6 +35,8 @@ __all__ = (
     "update_schedule_rule",
     "set_schedule_rule_enabled",
     "delete_schedule_rule",
+    "mark_schedule_rule_seen",
+    "list_schedulable_miners",
 )
 
 
@@ -518,5 +520,62 @@ def delete_schedule_rule(rule_id):
         ))
         conn.commit()
         return current
+    finally:
+        conn.close()
+
+
+
+def mark_schedule_rule_seen(
+    rule_id,
+    run_key,
+):
+    ensure_schedule_rules_schema()
+
+    conn = db()
+    try:
+        cur = conn.execute("""
+            UPDATE schedule_rules
+
+            SET last_run_key=?
+
+            WHERE
+                id=?
+                AND COALESCE(
+                    last_run_key,
+                    ''
+                ) <> ?
+        """, (
+            run_key,
+            int(rule_id),
+            run_key,
+        ))
+
+        changed = (
+            cur.rowcount
+            > 0
+        )
+
+        conn.commit()
+        return changed
+    finally:
+        conn.close()
+
+
+def list_schedulable_miners():
+    conn = db()
+    try:
+        return list(
+            conn.execute("""
+                SELECT *
+                FROM miners
+                WHERE
+                    enabled=1
+                    AND schedule_enabled=1
+                    AND driver IN (
+                        'awesome',
+                        'bitmain_stock'
+                    )
+            """).fetchall()
+        )
     finally:
         conn.close()

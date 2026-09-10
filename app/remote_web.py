@@ -6,7 +6,7 @@ import json
 import time
 
 import config as app_config
-from db import db
+from inventory.repository import list_miners
 
 
 def remote_host_for_ip(
@@ -330,14 +330,7 @@ def remote_web_miner_for_host(host):
         .lower()
     )
 
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM miners
-    """).fetchall()
-
-    conn.close()
+    rows = list_miners()
 
     for row in rows:
 

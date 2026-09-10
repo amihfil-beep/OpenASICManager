@@ -160,6 +160,10 @@ from api.telemetry import (
     create_telemetry_router,
 )
 
+from api.operations import (
+    create_operations_router,
+)
+
 from monitoring.service import (
     POLL_INTERVAL,
     MonitoringRuntime,
@@ -699,6 +703,10 @@ app.include_router(
 
 app.include_router(
     create_telemetry_router()
+)
+
+app.include_router(
+    create_operations_router()
 )
 
 
@@ -1920,18 +1928,6 @@ def clear_overrides():
 
 
 
-@app.get(
-    "/api/logs"
-)
-def api_logs(
-    limit: int = 100,
-):
-    return {
-        "logs": action_log_entries(
-            limit,
-            MOSCOW,
-        )
-    }
 
 
 
@@ -1970,29 +1966,6 @@ def api_miner_reboot(
         )
 
 
-@app.get(
-    "/api/control/jobs"
-)
-def api_control_jobs(
-    limit: int = 100,
-):
-    limit = max(
-        1,
-        min(
-            int(limit),
-            500,
-        ),
-    )
-
-    rows = list_control_jobs(
-        limit
-    )
-
-    return {
-        "jobs": control_job_items(
-            rows
-        )
-    }
 
 
 
@@ -2055,17 +2028,6 @@ def start_telegram_summary_loop():
 # ISSUES API
 # ============================================================
 
-@app.get(
-    "/api/issues"
-)
-def api_issues(
-    limit: int = 100,
-):
-    limit = max(
-        1,
-        min(int(limit), 500),
-    )
-    return issue_report(limit)
 
 
 

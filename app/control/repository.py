@@ -8,6 +8,7 @@ from db import db
 __all__ = (
     "get_control_job",
     "get_active_control_job",
+    "list_active_control_jobs",
     "update_control_job",
     "set_last_command",
     "set_manual_override",
@@ -25,6 +26,24 @@ def get_control_job(job_id):
         """, (
             job_id,
         )).fetchone()
+    finally:
+        conn.close()
+
+
+def list_active_control_jobs():
+    conn = db()
+    try:
+        return list(
+            conn.execute("""
+                SELECT *
+                FROM control_jobs
+                WHERE status IN (
+                    'QUEUED',
+                    'RUNNING'
+                )
+                ORDER BY id DESC
+            """).fetchall()
+        )
     finally:
         conn.close()
 

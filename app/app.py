@@ -2,7 +2,6 @@
 
 import ipaddress
 import json
-import sqlite3
 import threading
 import time
 import os
@@ -173,6 +172,11 @@ from inventory.repository import (
     set_miner_detection_auto,
     set_miner_manual_firmware,
     set_miner_detected_firmware,
+    convert_unconfigured_to_stock,
+    list_discovery_miners,
+    get_miner_by_ip,
+    miner_name_exists,
+    create_discovered_miner,
 )
 
 from inventory.analytics import (
@@ -2227,42 +2231,10 @@ def toggle_schedule(
     "/api/bulk/unconfigured-stock"
 )
 def unconfigured_to_stock():
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT id, ip
-        FROM miners
-        WHERE driver='unset'
-    """).fetchall()
-
-    ids = []
-
-    for row in rows:
-
-        conn.execute("""
-            UPDATE miners
-
-            SET
-                driver='bitmain_stock',
-                username=?,
-                password=?,
-                schedule_enabled=0,
-                last_state='UNKNOWN',
-                last_error=NULL
-
-            WHERE id=?
-        """, (
-            app_config.BITMAIN_USERNAME,
-            app_config.BITMAIN_PASSWORD,
-            row["id"],
-        ))
-
-        ids.append(
-            row["id"]
-        )
-
-    conn.commit()
-    conn.close()
+    ids = convert_unconfigured_to_stock(
+        app_config.BITMAIN_USERNAME,
+        app_config.BITMAIN_PASSWORD,
+    )
 
     for miner_id in ids:
 
@@ -2986,19 +2958,7 @@ def discovery_scan(
         )
 
 
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT
-            id,
-            ip,
-            driver,
-            name
-
-        FROM miners
-    """).fetchall()
-
-    conn.close()
+    rows = list_discovery_miners()
 
 
     managed = {
@@ -3206,22 +3166,9 @@ def discovery_add(
 
     for ip in clean_ips:
 
-        conn = db()
-
-        existing = conn.execute("""
-            SELECT
-                id,
-                name,
-                driver
-
-            FROM miners
-
-            WHERE ip=?
-        """, (
-            ip,
-        )).fetchone()
-
-        conn.close()
+        existing = get_miner_by_ip(
+            ip
+        )
 
 
         if existing:
@@ -3314,18 +3261,9 @@ def discovery_add(
         )
 
 
-        conn = db()
-
-        same_name = conn.execute("""
-            SELECT id
-            FROM miners
-            WHERE name=?
-        """, (
-            candidate_name,
-        )).fetchone()
-
-
-        if same_name:
+        if miner_name_exists(
+            candidate_name
+        ):
 
             candidate_name = (
                 "ASIC-"
@@ -3336,83 +3274,31 @@ def discovery_add(
             )
 
 
-        try:
+        miner_id, created = create_discovered_miner(
+            candidate_name,
+            ip,
+            driver,
+            username,
+            password,
+            detected.get(
+                "model"
+            ),
+            detected.get(
+                "firmware"
+            ),
+        )
 
-            cur = conn.execute("""
-                INSERT INTO miners
-                (
-                    name,
-                    ip,
-                    driver,
-                    username,
-                    password,
-                    enabled,
-                    schedule_enabled,
-                    model,
-                    firmware,
-                    last_state
-                )
-                VALUES (
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    1,
-                    0,
-                    ?,
-                    ?,
-                    'UNKNOWN'
-                )
-            """, (
-                candidate_name,
-                ip,
-                driver,
-                username,
-                password,
-                detected.get(
-                    "model"
-                ),
-                detected.get(
-                    "firmware"
-                ),
-            ))
-
-            miner_id = cur.lastrowid
-
-            conn.commit()
-
-        except sqlite3.IntegrityError:
-
-            conn.rollback()
-
-            existing = conn.execute("""
-                SELECT id
-                FROM miners
-                WHERE ip=?
-            """, (
-                ip,
-            )).fetchone()
-
-            conn.close()
+        if not created:
 
             results.append({
                 "ip": ip,
                 "success": True,
                 "status":
                     "already_managed",
-                "id":
-                    (
-                        existing["id"]
-                        if existing
-                        else None
-                    ),
+                "id": miner_id,
             })
 
             continue
-
-
-        conn.close()
 
 
         log_event(

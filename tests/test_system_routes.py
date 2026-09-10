@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from api.system import create_system_router
+from app_version import APP_VERSION
 
 
 class SystemRoutesTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class SystemRoutesTests(unittest.TestCase):
         result = self.endpoint("/health")()
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["version"], "0.1.2")
+        self.assertEqual(result["version"], APP_VERSION)
         parsed = datetime.fromisoformat(result["time"])
         self.assertIsNotNone(parsed.tzinfo)
 
@@ -53,7 +54,7 @@ class SystemRoutesTests(unittest.TestCase):
 
             result = self.endpoint("/api/status")()
 
-        self.assertEqual(result["version"], "0.1.2")
+        self.assertEqual(result["version"], APP_VERSION)
         self.assertTrue(result["scheduler_enabled"])
         self.assertEqual(result["desired_state"], "MINING")
         self.assertEqual(

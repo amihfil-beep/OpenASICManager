@@ -71,6 +71,11 @@ from control.queue import (
 
 from control.repository import (
     list_active_control_jobs,
+    list_control_jobs,
+)
+
+from control.analytics import (
+    control_job_items,
 )
 
 from scheduler.policy import (
@@ -2365,7 +2370,6 @@ def api_miner_reboot(
 def api_control_jobs(
     limit: int = 100,
 ):
-
     limit = max(
         1,
         min(
@@ -2374,78 +2378,14 @@ def api_control_jobs(
         ),
     )
 
-
-    conn = db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM control_jobs
-
-        ORDER BY id DESC
-
-        LIMIT ?
-    """, (
-        limit,
-    )).fetchall()
-
-    conn.close()
-
-
-    result = []
-
-
-    for row in rows:
-
-        result.append({
-            "id":
-                row["id"],
-
-            "created_at":
-                row["created_at"],
-
-            "started_at":
-                row["started_at"],
-
-            "completed_at":
-                row["completed_at"],
-
-            "miner_id":
-                row["miner_id"],
-
-            "ip":
-                row["ip"],
-
-            "name":
-                row["name"],
-
-            "source":
-                row["source"],
-
-            "action":
-                row["action"],
-
-            "target_state":
-                row["target_state"],
-
-            "status":
-                row["status"],
-
-            "attempts":
-                row["attempts"],
-
-            "max_attempts":
-                row["max_attempts"],
-
-            "final_state":
-                row["final_state"],
-
-            "message":
-                row["message"],
-        })
-
+    rows = list_control_jobs(
+        limit
+    )
 
     return {
-        "jobs": result
+        "jobs": control_job_items(
+            rows
+        )
     }
 
 

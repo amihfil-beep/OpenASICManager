@@ -169,6 +169,10 @@ from inventory.repository import (
     set_miner_schedule_enabled,
     set_all_schedule_enabled,
     clear_manual_overrides,
+    set_miner_manual_driver,
+    set_miner_detection_auto,
+    set_miner_manual_firmware,
+    set_miner_detected_firmware,
 )
 
 from inventory.analytics import (
@@ -1734,65 +1738,12 @@ def set_driver(
         password = ""
 
 
-    conn = db()
-
-    conn.execute("""
-        UPDATE miners
-
-        SET
-            detection_mode='MANUAL',
-            driver=?,
-            username=?,
-            password=?,
-            manual_override_until=NULL,
-            last_error=NULL,
-
-            last_state=
-                CASE
-                    WHEN ?='unset'
-                    THEN 'CONFIG_REQUIRED'
-                    ELSE 'UNKNOWN'
-                END,
-
-            model=
-                CASE
-                    WHEN driver=?
-                    THEN model
-                    ELSE NULL
-                END,
-
-            firmware=
-                CASE
-                    WHEN driver=?
-                    THEN firmware
-                    ELSE NULL
-                END
-
-        WHERE id=?
-    """, (
+    set_miner_manual_driver(
+        miner_id,
         driver,
         username,
         password,
-        driver,
-        driver,
-        driver,
-        miner_id,
-    ))
-
-
-    if driver == "unset":
-
-        conn.execute("""
-            UPDATE miners
-            SET schedule_enabled=0
-            WHERE id=?
-        """, (
-            miner_id,
-        ))
-
-
-    conn.commit()
-    conn.close()
+    )
 
 
     updated = get_miner(
@@ -1875,18 +1826,9 @@ def firmware_settings(
 
     if mode == "AUTO":
 
-        conn = db()
-
-        conn.execute("""
-            UPDATE miners
-            SET detection_mode='AUTO'
-            WHERE id=?
-        """, (
-            miner_id,
-        ))
-
-        conn.commit()
-        conn.close()
+        set_miner_detection_auto(
+            miner_id
+        )
 
 
         updated = get_miner(
@@ -1995,58 +1937,15 @@ def firmware_settings(
     )
 
 
-    conn = db()
-
-    conn.execute("""
-        UPDATE miners
-
-        SET
-            detection_mode='MANUAL',
-            driver=?,
-            username=?,
-            password=?,
-            model=?,
-            firmware=?,
-            manual_override_until=NULL,
-            last_error=NULL,
-
-            last_state=
-                CASE
-                    WHEN ?='unset'
-                    THEN 'CONFIG_REQUIRED'
-
-                    WHEN ?
-                    THEN 'UNKNOWN'
-
-                    ELSE last_state
-                END
-
-        WHERE id=?
-    """, (
+    set_miner_manual_firmware(
+        miner_id,
         driver,
         username,
         password,
-        model or None,
-        firmware or None,
-        driver,
-        1 if driver_changed else 0,
-        miner_id,
-    ))
-
-
-    if driver == "unset":
-
-        conn.execute("""
-            UPDATE miners
-            SET schedule_enabled=0
-            WHERE id=?
-        """, (
-            miner_id,
-        ))
-
-
-    conn.commit()
-    conn.close()
+        model,
+        firmware,
+        driver_changed,
+    )
 
 
     updated = get_miner(
@@ -2199,40 +2098,15 @@ def firmware_detect_now(
     )
 
 
-    conn = db()
-
-    conn.execute("""
-        UPDATE miners
-
-        SET
-            detection_mode='AUTO',
-            driver=?,
-            username=?,
-            password=?,
-            model=?,
-            firmware=?,
-            last_error=NULL,
-
-            last_state=
-                CASE
-                    WHEN ?
-                    THEN 'UNKNOWN'
-                    ELSE last_state
-                END
-
-        WHERE id=?
-    """, (
+    set_miner_detected_firmware(
+        miner_id,
         driver,
         username,
         password,
         model,
         firmware,
-        1 if driver_changed else 0,
-        miner_id,
-    ))
-
-    conn.commit()
-    conn.close()
+        driver_changed,
+    )
 
 
     updated = get_miner(

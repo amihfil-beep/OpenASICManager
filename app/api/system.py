@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import config as app_config
 
+from app_version import APP_VERSION
 from control.repository import list_active_control_jobs
 from db import get_setting
 from fastapi import APIRouter
@@ -24,7 +25,7 @@ def create_system_router():
     def health():
         return {
             "status": "ok",
-            "version": "0.1.2",
+            "version": APP_VERSION,
             "time":
                 datetime.now(
                     MOSCOW
@@ -45,7 +46,7 @@ def create_system_router():
         )
 
         return {
-            "version": "0.1.2",
+            "version": APP_VERSION,
             "now": now.isoformat(),
             "scheduler_enabled": (
                 get_setting(

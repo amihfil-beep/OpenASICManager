@@ -2,6 +2,37 @@
 
 All notable changes to OpenASICManager will be documented in this file.
 
+## [0.2.0] - 2026-09-10
+
+Architecture-focused release that decomposes the original FastAPI monolith without intentionally changing ASIC-control behavior.
+
+### Changed
+
+- `app/app.py` is now the application composition root: runtime wiring, lifecycle, middleware, router registration and dashboard entry point.
+- HTTP endpoints are split into dedicated routers under `app/api/`.
+- Firmware-specific Bitmain Stock and Awesome / AnthillOS behavior is isolated in `app/drivers/`.
+- Control, scheduler, telemetry, anomaly, monitoring, inventory, notification and audit logic is split into explicit policy, service, analytics and repository layers where appropriate.
+- Direct database access is restricted to `app/db.py` and repository modules.
+- The dashboard HTML template is stored separately under `app/ui/` instead of being embedded in the Python application module.
+- Runtime version reporting now uses shared application version metadata and is checked against the repository `VERSION` file.
+
+### Added
+
+- Focused regression tests for the extracted subsystems and API routers.
+- Permanent architecture-boundary tests that prevent direct database access outside persistence modules and prevent API routers from importing the application composition root.
+- Dedicated repository helpers for notification context, scheduler persistence, control jobs, inventory state, telemetry, anomalies and audit records.
+
+### Fixed
+
+- Restored the telemetry history-statistics HTTP route to its intended handler during the route extraction pass.
+- Removed stale imports, empty monolith section markers and obsolete application-root implementation code left behind by subsystem extraction.
+
+### Compatibility
+
+- Existing public API behavior, scheduler semantics, verified control operations, anomaly thresholds, Telegram behavior and Remote ASIC Web behavior are intended to remain compatible with 0.1.2.
+- Fresh installations still start with no configured miners, no scheduler rules, the global scheduler disabled, Telegram disabled and Remote ASIC Web disabled.
+- No production deployment migration is performed by this release itself.
+
 ## [0.1.2] - 2026-09-03
 
 Public release packaging fixes.

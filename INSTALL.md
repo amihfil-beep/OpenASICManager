@@ -2,7 +2,7 @@
 
 ## Supported platform
 
-The initial public release is designed for Ubuntu/Debian systems with systemd.
+The current public release is designed for Ubuntu/Debian systems with systemd.
 
 Primary development platform:
 

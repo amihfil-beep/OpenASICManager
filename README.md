@@ -25,9 +25,9 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 
 ## Current release
 
-**0.1.2**
+**0.2.0**
 
-This is the first public release.
+OpenASICManager 0.2.0 is an architecture-focused release. It keeps the existing management behavior while splitting the former application monolith into explicit API, service, policy, driver, analytics and persistence layers.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -150,24 +150,30 @@ Remote Web uses:
     nginx + Basic Auth
        |
        v
-    OpenASICManager
+    FastAPI routers
        |
-       +---- SQLite
+       v
+    Application services
        |
-       +---- ASIC network
-       |       |
-       |       +-- Bitmain Stock
-       |       +-- Awesome / AnthillOS
+       +---- repositories ---- SQLite
+       |
+       +---- firmware drivers ---- ASIC network
        |
        +---- Telegram (optional)
        |
        +---- Remote ASIC Web (optional)
+
+`app/app.py` is the composition root. It creates the application-owned runtimes, manages their lifecycle, installs middleware, registers API routers and serves the dashboard entry point.
+
+Domain code is split into dedicated packages for control, scheduler, telemetry, anomalies, notifications, monitoring, inventory and audit. Firmware-specific communication is isolated in `app/drivers/`, while direct database access is restricted to `app/db.py` and repository modules.
 
 OpenASICManager itself listens on:
 
     127.0.0.1:8088
 
 and is intended to be published through nginx.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed component map.
 
 ## Requirements
 
@@ -216,6 +222,17 @@ For public HTTPS access:
 
 See [INSTALL.md](INSTALL.md) for complete installation instructions.
 
+## Fresh-install defaults
+
+A clean installation starts with conservative defaults:
+
+- no configured miners;
+- no scheduler rules;
+- global scheduler disabled;
+- Telegram notifications disabled;
+- Remote ASIC Web disabled;
+- no default ASIC passwords.
+
 ## Security
 
 OpenASICManager intentionally does not include default ASIC passwords.
@@ -238,7 +255,7 @@ The default systemd deployment also uses:
 
 ## Project status
 
-OpenASICManager is currently a pet/open-source project and should be considered an early release.
+OpenASICManager is an early open-source project.
 
 Before deploying it to a production mining environment, test control operations and scheduling with a small subset of devices.
 
@@ -254,7 +271,6 @@ Before deploying it to a production mining environment, test control operations 
 Planned areas of development include:
 
 - support for additional ASIC models and firmware families;
-- modular driver architecture;
 - improved telemetry and historical charts;
 - configurable alert policies;
 - improved multi-subnet discovery and inventory management;
@@ -263,8 +279,7 @@ Planned areas of development include:
 - API documentation;
 - automated upgrade and uninstall tooling.
 
-Feature development will prioritize safe operation and compatibility with
-real ASIC hardware over adding large numbers of untested features.
+Feature development will prioritize safe operation and compatibility with real ASIC hardware over adding large numbers of untested features.
 
 ## License
 

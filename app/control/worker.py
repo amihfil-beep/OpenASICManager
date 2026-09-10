@@ -11,9 +11,10 @@ the main application module.
 
 import time
 
-from db import (
+from db import get_miner
+
+from control.repository import (
     get_control_job,
-    get_miner,
     update_control_job,
     set_last_command,
 )

@@ -144,22 +144,12 @@ from anomalies.service import (
 from anomalies.analytics import issue_report
 
 from notifications.telegram import (
-    TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_ID,
-    TELEGRAM_NOTIFICATIONS_ENABLED,
-    ASIC_MANAGER_NAME,
-    TELEGRAM_PROXY,
-    TELEGRAM_EVENT_ACTIONS,
-    TELEGRAM_SUMMARY_ENABLED,
-    TELEGRAM_SUMMARY_HOUR,
-    TELEGRAM_SUMMARY_MINUTE,
-    TELEGRAM_SUMMARY_WINDOW_MINUTES,
     TelegramRuntime,
-    telegram_configured,
-    telegram_send_message,
     telegram_event_async,
-    telegram_summary_last_date,
-    telegram_transport_health,
+)
+
+from api.notifications import (
+    create_notifications_router,
 )
 
 from monitoring.service import (
@@ -329,11 +319,7 @@ telegram_runtime = TelegramRuntime(
     stop_event=stop_event,
 )
 
-# Preserve existing application-facing call interfaces.
-telegram_send_farm_summary = (
-    telegram_runtime.send_farm_summary
-)
-
+# Preserve existing application-facing summary-loop interface.
 telegram_summary_loop = (
     telegram_runtime.summary_loop
 )
@@ -689,6 +675,12 @@ async def lifespan(app):
 app = FastAPI(
     title="OpenASICManager",
     lifespan=lifespan,
+)
+
+app.include_router(
+    create_notifications_router(
+        telegram_runtime
+    )
 )
 
 
@@ -2510,68 +2502,8 @@ def start_telegram_summary_loop():
     thread.start()
 
 
-@app.get(
-    "/api/notifications/summary/status"
-)
-def api_notification_summary_status():
-
-    return {
-        "enabled":
-            TELEGRAM_SUMMARY_ENABLED,
-
-        "weekdays":
-            [
-                "MON",
-                "TUE",
-                "WED",
-                "THU",
-                "FRI",
-            ],
-
-        "time":
-            (
-                f"{TELEGRAM_SUMMARY_HOUR:02d}:"
-                f"{TELEGRAM_SUMMARY_MINUTE:02d}"
-            ),
-
-        "timezone":
-            TIMEZONE_NAME,
-
-        "window_minutes":
-            TELEGRAM_SUMMARY_WINDOW_MINUTES,
-
-        "last_sent_date":
-            telegram_summary_last_date(),
-    }
 
 
-@app.post(
-    "/api/notifications/summary/test"
-)
-def api_notification_summary_test():
-
-    result = (
-        telegram_send_farm_summary(
-            force=True,
-            source="MANUAL_TEST",
-        )
-    )
-
-
-    if not result.get(
-        "success"
-    ):
-
-        raise HTTPException(
-            status_code=502,
-            detail=result.get(
-                "message",
-                "Summary send failed",
-            ),
-        )
-
-
-    return result
 
 
 # ============================================================
@@ -2581,154 +2513,10 @@ def api_notification_summary_test():
 
 
 
-@app.get(
-    "/api/notifications/health"
-)
-def api_notifications_health():
-
-    transport = (
-        telegram_transport_health()
-    )
 
 
-    return {
-        "provider":
-            "telegram",
-
-        "configured":
-            telegram_configured(),
-
-        "enabled":
-            TELEGRAM_NOTIFICATIONS_ENABLED,
-
-        "transport_ok":
-            bool(
-                transport.get(
-                    "ok"
-                )
-            ),
-
-        "transport":
-            transport,
-    }
 
 
-@app.get(
-    "/api/notifications/status"
-)
-def api_notifications_status():
-
-    masked_chat = None
-
-
-    if TELEGRAM_CHAT_ID:
-
-        if len(
-            TELEGRAM_CHAT_ID
-        ) <= 4:
-
-            masked_chat = (
-                "*" * len(
-                    TELEGRAM_CHAT_ID
-                )
-            )
-
-        else:
-
-            masked_chat = (
-                "*"
-                * (
-                    len(
-                        TELEGRAM_CHAT_ID
-                    )
-                    - 4
-                )
-                +
-                TELEGRAM_CHAT_ID[-4:]
-            )
-
-
-    return {
-        "provider":
-            "telegram",
-
-        "configured":
-            telegram_configured(),
-
-        "enabled":
-            TELEGRAM_NOTIFICATIONS_ENABLED,
-
-        "chat_id":
-            masked_chat,
-
-        "manager_name":
-            ASIC_MANAGER_NAME,
-
-        "events":
-            sorted(
-                TELEGRAM_EVENT_ACTIONS
-            ),
-    }
-
-
-@app.post(
-    "/api/notifications/test"
-)
-def api_notifications_test():
-
-    if not telegram_configured():
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Telegram is not configured"
-            ),
-        )
-
-
-    message = (
-        "✅ OpenASICManager Telegram test\\n"
-        "\\n"
-        f"Farm: {ASIC_MANAGER_NAME}\\n"
-        "Status: notification channel works\\n"
-        "Time: "
-        +
-        datetime.now(
-            MOSCOW
-        ).strftime(
-            "%Y-%m-%d %H:%M:%S %Z"
-        )
-    )
-
-
-    try:
-
-        success, result = (
-            telegram_send_message(
-                message,
-                force=True,
-            )
-        )
-
-
-        return {
-            "success":
-                success,
-
-            "message":
-                result,
-        }
-
-
-    except Exception as exc:
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"{type(exc).__name__}: "
-                f"{exc}"
-            ),
-        )
 
 
 # ============================================================

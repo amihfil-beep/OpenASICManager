@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_DIR = PROJECT_ROOT / "app"
+sys.path.insert(0, str(APP_DIR))
+
+from maintenance.remote_web_sync import (
+    DEFAULT_ENABLED_DIR,
+    DEFAULT_OUTPUT_PATH,
+    reconcile_config,
+)
+
+
+def _parser():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Reconcile OpenASICManager Remote Web nginx configuration"
+        )
+    )
+    parser.add_argument(
+        "--output",
+        default=str(DEFAULT_OUTPUT_PATH),
+        help="Generated nginx site path",
+    )
+    parser.add_argument(
+        "--enabled-dir",
+        default=str(DEFAULT_ENABLED_DIR),
+        help="nginx sites-enabled directory",
+    )
+    return parser
+
+
+def _render(generator):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(generator),
+            "--stdout",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        detail = (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "generator failed"
+        )
+        raise RuntimeError(
+            "Remote Web nginx generation failed: "
+            + detail
+        )
+
+    return result.stdout
+
+
+def main():
+    args = _parser().parse_args()
+
+    if os.geteuid() != 0:
+        print(
+            "ERROR: run this sync command as root",
+            file=sys.stderr,
+        )
+        return 2
+
+    generator = (
+        PROJECT_ROOT
+        / "scripts"
+        / "generate-remote-nginx"
+    )
+
+    try:
+        content = _render(generator)
+        report = reconcile_config(
+            content,
+            output_path=Path(args.output),
+            enabled_dir=Path(args.enabled_dir),
+        )
+    except RuntimeError as exc:
+        print(
+            "ERROR:",
+            str(exc),
+            file=sys.stderr,
+        )
+        return 1
+
+    if report["status"] == "unchanged":
+        print(
+            "Remote Web nginx configuration unchanged."
+        )
+    else:
+        print(
+            "Remote Web nginx configuration updated and nginx reloaded."
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

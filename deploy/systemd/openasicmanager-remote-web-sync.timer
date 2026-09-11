@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodically reconcile OpenASICManager Remote Web nginx configuration
+After=openasicmanager.service
+PartOf=openasicmanager.service
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+RandomizedDelaySec=5s
+Unit=openasicmanager-remote-web-sync.service
+
+[Install]
+WantedBy=timers.target

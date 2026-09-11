@@ -169,7 +169,8 @@ for script in \
     generate-remote-nginx \
     openasicmanager-backup \
     openasicmanager-doctor \
-    openasicmanager-upgrade
+    openasicmanager-upgrade \
+    openasicmanager-remote-web-sync
 do
 
     if [ -f \
@@ -274,6 +275,16 @@ install \
     -m 0644 \
     "$SOURCE_DIR/deploy/systemd/openasicmanager-firmware-detect.timer" \
     /etc/systemd/system/openasicmanager-firmware-detect.timer
+
+install \
+    -m 0644 \
+    "$SOURCE_DIR/deploy/systemd/openasicmanager-remote-web-sync.service" \
+    /etc/systemd/system/openasicmanager-remote-web-sync.service
+
+install \
+    -m 0644 \
+    "$SOURCE_DIR/deploy/systemd/openasicmanager-remote-web-sync.timer" \
+    /etc/systemd/system/openasicmanager-remote-web-sync.timer
 
 
 systemctl daemon-reload

@@ -10,7 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = PROJECT_ROOT / "app"
 sys.path.insert(0, str(APP_DIR))
 
-from maintenance.upgrade import UpgradeConfig, perform_upgrade
+import maintenance.upgrade as upgrade_module
+from maintenance.remote_web_sync import register_upgrade_units
+
+UpgradeConfig = upgrade_module.UpgradeConfig
+perform_upgrade = upgrade_module.perform_upgrade
 
 
 def _parser():
@@ -56,8 +60,19 @@ def main():
         print("ERROR: --health-timeout must be positive", file=sys.stderr)
         return 2
 
+    source_root = Path(args.source)
+
+    try:
+        register_upgrade_units(
+            upgrade_module,
+            source_root,
+        )
+    except RuntimeError as exc:
+        print("ERROR:", str(exc), file=sys.stderr)
+        return 1
+
     config = UpgradeConfig(
-        source_root=Path(args.source),
+        source_root=source_root,
         health_timeout=args.health_timeout,
     )
 

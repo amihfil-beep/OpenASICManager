@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_DIR = PROJECT_ROOT / "app"
+sys.path.insert(0, str(APP_DIR))
+
+from app_version import APP_VERSION
+from maintenance.doctor import DoctorConfig, exit_code, run_diagnostics
+
+
+def _parser():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run read-only OpenASICManager "
+            "operational diagnostics"
+        )
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON",
+    )
+    parser.add_argument(
+        "--install-root",
+        default="/opt/openasicmanager",
+    )
+    parser.add_argument(
+        "--database",
+        default=(
+            "/var/lib/openasicmanager/"
+            "openasicmanager.db"
+        ),
+    )
+    parser.add_argument(
+        "--env-file",
+        default=(
+            "/etc/openasicmanager/"
+            "openasicmanager.env"
+        ),
+    )
+    parser.add_argument(
+        "--backup-root",
+        default="/var/backups/openasicmanager",
+    )
+    parser.add_argument(
+        "--remote-nginx",
+        default=(
+            "/etc/nginx/sites-available/"
+            "openasicmanager-remote"
+        ),
+    )
+    parser.add_argument(
+        "--health-url",
+        default="http://127.0.0.1:8088/health",
+    )
+    parser.add_argument(
+        "--service-name",
+        default="openasicmanager.service",
+    )
+    parser.add_argument(
+        "--timer-name",
+        default=(
+            "openasicmanager-firmware-detect.timer"
+        ),
+    )
+    parser.add_argument(
+        "--warn-free-mb",
+        type=int,
+        default=1024,
+        help=(
+            "Warn when free space falls below "
+            "this many MiB"
+        ),
+    )
+    return parser
+
+
+def _human(report):
+    print("OpenASICManager doctor")
+    print("Version:", report["version"])
+    print("Overall:", report["status"].upper())
+    print()
+
+    for item in report["checks"]:
+        print(
+            f"[{item['status'].upper():4}] "
+            f"{item['code']}: {item['message']}"
+        )
+
+        data = item.get("data", {})
+
+        for key in (
+            "name",
+            "path",
+            "url",
+            "installed",
+            "runtime",
+            "active",
+            "enabled",
+            "scheduler_enabled",
+            "schedule_rules",
+            "miners",
+            "enabled_miners",
+            "remote_web_enabled",
+            "remote_config_present",
+            "free_bytes",
+        ):
+            if (
+                key in data
+                and data[key] is not None
+            ):
+                print(
+                    f"       {key}: "
+                    f"{data[key]}"
+                )
+
+
+def main():
+    args = _parser().parse_args()
+
+    if args.warn_free_mb < 0:
+        print(
+            "ERROR: --warn-free-mb must be non-negative",
+            file=sys.stderr,
+        )
+        return 2
+
+    config = DoctorConfig(
+        version=APP_VERSION,
+        install_root=Path(args.install_root),
+        database_path=Path(args.database),
+        env_file=Path(args.env_file),
+        backup_root=Path(args.backup_root),
+        remote_nginx=Path(args.remote_nginx),
+        health_url=args.health_url,
+        service_name=args.service_name,
+        timer_name=args.timer_name,
+        free_bytes_warning=(
+            args.warn_free_mb
+            * 1024
+            * 1024
+        ),
+    )
+
+    report = run_diagnostics(config)
+
+    if args.json:
+        print(
+            json.dumps(
+                report,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        _human(report)
+
+    return exit_code(report)
+
+
+if __name__ == "__main__":
+    raise SystemExit(
+        main()
+    )

@@ -168,7 +168,8 @@ for script in \
     asic-discover \
     generate-remote-nginx \
     openasicmanager-backup \
-    openasicmanager-doctor
+    openasicmanager-doctor \
+    openasicmanager-upgrade
 do
 
     if [ -f \

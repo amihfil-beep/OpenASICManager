@@ -167,7 +167,8 @@ for script in \
     asic-firmware-detect \
     asic-discover \
     generate-remote-nginx \
-    openasicmanager-backup
+    openasicmanager-backup \
+    openasicmanager-doctor
 do
 
     if [ -f \

@@ -33,14 +33,21 @@ jobs:
             app/config.py \
             app/discovery.py \
             app/remote_web.py \
+            app/maintenance/repository.py \
+            app/maintenance/backup.py \
             scripts/asic-firmware-detect \
-            scripts/generate-remote-nginx
+            scripts/generate-remote-nginx \
+            scripts/openasicmanager-backup
 
       - name: Shell syntax
         run: |
           bash -n install.sh
           bash -n configure-web.sh
           bash -n scripts/asic-discover
+
+      - name: Backup CLI smoke test
+        run: |
+          python scripts/openasicmanager-backup --help >/dev/null
 
       - name: Fresh installation smoke test
         shell: bash

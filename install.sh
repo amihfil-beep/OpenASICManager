@@ -22,6 +22,7 @@ SOURCE_DIR="$(
 INSTALL_DIR="/opt/openasicmanager"
 DATA_DIR="/var/lib/openasicmanager"
 CONFIG_DIR="/etc/openasicmanager"
+BACKUP_DIR="/var/backups/openasicmanager"
 
 SERVICE_USER="openasicmanager"
 SERVICE_GROUP="openasicmanager"
@@ -111,6 +112,13 @@ install \
     -m 0750 \
     "$CONFIG_DIR"
 
+install \
+    -d \
+    -o root \
+    -g root \
+    -m 0700 \
+    "$BACKUP_DIR"
+
 
 # ------------------------------------------------------------
 # 4. Application
@@ -135,6 +143,10 @@ cp \
     "$SOURCE_DIR/requirements.txt" \
     "$INSTALL_DIR/requirements.txt"
 
+cp \
+    "$SOURCE_DIR/VERSION" \
+    "$INSTALL_DIR/VERSION"
+
 chown -R \
     root:root \
     "$INSTALL_DIR"
@@ -154,7 +166,8 @@ find \
 for script in \
     asic-firmware-detect \
     asic-discover \
-    generate-remote-nginx
+    generate-remote-nginx \
+    openasicmanager-backup
 do
 
     if [ -f \
@@ -165,7 +178,6 @@ do
             "$INSTALL_DIR/scripts/$script"
 
     fi
-
 done
 
 
@@ -332,6 +344,10 @@ echo "  $ENV_FILE"
 echo
 echo "Database:"
 echo "  $DATA_DIR/openasicmanager.db"
+
+echo
+echo "Backups:"
+echo "  $BACKUP_DIR"
 
 echo
 echo "Local Web:"

@@ -25,9 +25,9 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 
 ## Current release
 
-**0.2.0**
+**0.3.0**
 
-OpenASICManager 0.2.0 is an architecture-focused release. It keeps the existing management behavior while splitting the former application monolith into explicit API, service, policy, driver, analytics and persistence layers.
+OpenASICManager 0.3.0 is an operational-safety release. It adds verified backup/restore tooling, read-only diagnostics, transactional public-release upgrades with automatic rollback, and automatic Remote ASIC Web nginx synchronization while keeping the main application process unprivileged.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -139,7 +139,19 @@ Remote Web uses:
 - signed short-lived session cookies;
 - nginx `auth_request`;
 - access validation by OpenASICManager;
-- Digest Authorization passthrough for Bitmain firmware.
+- Digest Authorization passthrough for Bitmain firmware;
+- automatic root-owned nginx reconciliation when the managed inventory changes.
+
+### Maintenance and safe upgrades
+
+OpenASICManager 0.3.0 adds maintenance tooling for standard public installations:
+
+- `openasicmanager-backup` creates and verifies consistent SQLite/configuration backups;
+- `openasicmanager-doctor` performs read-only operational diagnostics;
+- `openasicmanager-upgrade` stages and validates a target public release before switching the active application tree and automatically rolls back if validation fails;
+- `openasicmanager-remote-web-sync` reconciles generated Remote Web nginx configuration without granting nginx privileges to the web application.
+
+The public transactional upgrade contract starts with public version 0.2.0. Historical private/legacy deployments are intentionally not migrated implicitly by the generic upgrader.
 
 ## Architecture
 
@@ -253,6 +265,8 @@ The default systemd deployment also uses:
 - `ProtectHome=true`;
 - restrictive umask.
 
+Privileged maintenance work, such as nginx reconciliation, is isolated in dedicated root-owned oneshot services rather than delegated to the web application process.
+
 ## Project status
 
 OpenASICManager is an early open-source project.
@@ -263,7 +277,10 @@ Before deploying it to a production mining environment, test control operations 
 
 - [Installation](INSTALL.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Doctor / preflight diagnostics](docs/DOCTOR.md)
+- [Transactional upgrades](docs/UPGRADE.md)
 - [Remote ASIC Web](docs/REMOTE-WEB.md)
+- [Automatic Remote Web nginx synchronization](docs/REMOTE_WEB_SYNC.md)
 - [Changelog](CHANGELOG.md)
 
 ## Roadmap
@@ -274,10 +291,9 @@ Planned areas of development include:
 - improved telemetry and historical charts;
 - configurable alert policies;
 - improved multi-subnet discovery and inventory management;
-- automated Remote Web configuration updates;
 - additional authentication options;
-- API documentation;
-- automated upgrade and uninstall tooling.
+- expanded API documentation and examples;
+- uninstall tooling and additional lifecycle automation.
 
 Feature development will prioritize safe operation and compatibility with real ASIC hardware over adding large numbers of untested features.
 

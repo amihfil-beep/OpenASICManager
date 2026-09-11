@@ -2,6 +2,47 @@
 
 All notable changes to OpenASICManager will be documented in this file.
 
+## [0.3.0] - 2026-09-11
+
+Operational-safety release focused on making public OpenASICManager installations easier to back up, diagnose, upgrade and maintain without weakening the application's privilege boundaries.
+
+### Added
+
+- Safe backup and restore tooling for the standard public installation layout.
+- Consistent online SQLite backups using the SQLite backup API instead of copying a live database file directly.
+- Backup manifests with SHA-256 checksums, file sizes and source-version metadata.
+- Backup verification including checksum validation and SQLite `PRAGMA quick_check`.
+- Restore safeguards including explicit confirmation, service-state checks, ownership/mode preservation and rollback on partial restore failure.
+- Read-only `openasicmanager-doctor` diagnostics for release metadata, systemd state, `/health`, SQLite integrity, inventory/scheduler summary, environment-file permissions, Remote Web/nginx state, virtualenv dependencies and free disk space.
+- Human-readable and JSON doctor output suitable for operator use and automated preflight checks.
+- Transactional public-release upgrade tooling for supported installations starting at version 0.2.0.
+- Upgrade preflight, verified backup, target staging, fresh virtualenv preparation and dependency validation before production downtime.
+- Atomic application-tree switching with exact target-version health verification and doctor postflight validation.
+- Automatic rollback of the previous application tree, virtualenv, systemd units and verified database/environment backup when a target upgrade fails after switch-over.
+- Recovery handling for failures after service shutdown but before the application-tree switch.
+- Automatic Remote ASIC Web nginx reconciliation through a dedicated root-owned systemd oneshot service and timer.
+- Idempotent Remote Web reconciliation: unchanged generated configuration causes no nginx validation or reload.
+- Automatic rollback of generated nginx content and the managed `sites-enabled` symlink when `nginx -t` or nginx reload fails.
+- Regression tests covering maintenance tooling, rollback paths, Remote Web inventory convergence and systemd wiring.
+
+### Changed
+
+- Fresh installs now install the backup, doctor, upgrade and Remote Web synchronization maintenance commands with executable permissions.
+- Fresh installs include the Remote Web synchronization service/timer while keeping the main OpenASICManager application process unprivileged.
+- The public upgrader installs and rolls back newly introduced maintenance systemd units transactionally.
+- Remote Web configuration can now converge automatically after miner additions, removals and IP changes instead of requiring an administrator to rerun the nginx generator manually.
+- Remote Web synchronization is skipped cleanly on systems where nginx is not installed.
+
+### Safety and compatibility
+
+- Production upgrades do not depend on a Git working tree and never require `git pull` in the active installation.
+- Configuration and the SQLite database remain outside the application tree during successful upgrades.
+- No secret values are intentionally emitted in backup manifests, doctor output or upgrade reports.
+- The unprivileged web application is not granted nginx or root privileges; nginx synchronization runs in a separate privileged oneshot service.
+- nginx is reloaded only after a real configuration change and a successful `nginx -t` validation.
+- Public transactional upgrades are supported from 0.2.0 and newer public releases; migration from historical private/legacy 1.5.2 deployments remains intentionally outside the generic public upgrade contract.
+- Existing ASIC-control behavior, scheduler semantics, telemetry, alerts, Telegram behavior and fresh-install conservative defaults are intended to remain compatible with 0.2.0.
+
 ## [0.2.0] - 2026-09-10
 
 Architecture-focused release that decomposes the original FastAPI monolith without intentionally changing ASIC-control behavior.

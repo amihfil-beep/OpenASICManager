@@ -2,6 +2,7 @@
 Description=OpenASICManager
 After=network-online.target
 Wants=network-online.target
+Wants=openasicmanager-remote-web-sync.timer
 
 [Service]
 Type=simple

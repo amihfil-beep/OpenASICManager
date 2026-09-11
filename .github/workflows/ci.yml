@@ -36,10 +36,14 @@ jobs:
             app/maintenance/repository.py \
             app/maintenance/backup.py \
             app/maintenance/doctor.py \
+            app/maintenance/upgrade.py \
+            app/maintenance/remote_web_sync.py \
             scripts/asic-firmware-detect \
             scripts/generate-remote-nginx \
             scripts/openasicmanager-backup \
-            scripts/openasicmanager-doctor
+            scripts/openasicmanager-doctor \
+            scripts/openasicmanager-upgrade \
+            scripts/openasicmanager-remote-web-sync
 
       - name: Shell syntax
         run: |
@@ -51,6 +55,8 @@ jobs:
         run: |
           python scripts/openasicmanager-backup --help >/dev/null
           python scripts/openasicmanager-doctor --help >/dev/null
+          python scripts/openasicmanager-upgrade --help >/dev/null
+          python scripts/openasicmanager-remote-web-sync --help >/dev/null
 
       - name: Fresh installation smoke test
         shell: bash

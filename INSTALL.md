@@ -26,6 +26,7 @@ The installer creates:
     /opt/openasicmanager
     /etc/openasicmanager
     /var/lib/openasicmanager
+    /var/backups/openasicmanager
 
 and the dedicated system account:
 
@@ -243,28 +244,74 @@ Default SQLite database:
 The database stores management state, scheduler data, telemetry, history,
 control jobs and audit records.
 
-## 13. Backup
+## 13. Backup and restore
 
-At minimum, back up:
+OpenASICManager includes a maintenance command for consistent backup sets:
 
-    /var/lib/openasicmanager/openasicmanager.db
-    /etc/openasicmanager/openasicmanager.env
+    /opt/openasicmanager/scripts/openasicmanager-backup
 
-The environment file may contain credentials, Telegram tokens and Remote Web
-secrets. Store its backup securely.
+Create an online backup:
 
-For a simple offline database backup:
+    sudo /opt/openasicmanager/scripts/openasicmanager-backup \
+        create
 
-    sudo systemctl stop openasicmanager
+The application may remain running while the backup is created. The tool uses
+SQLite's online backup API, so a live WAL database is copied consistently
+without copying `-wal` or `-shm` files directly.
 
-    sudo cp \
-        /var/lib/openasicmanager/openasicmanager.db \
-        /safe/backup/location/openasicmanager.db
+Default backup location:
 
-    sudo systemctl start openasicmanager
+    /var/backups/openasicmanager
 
-SQLite's online backup API may also be used when service downtime is not
-acceptable.
+Each backup set contains:
+
+    - a consistent SQLite database snapshot;
+    - `/etc/openasicmanager/openasicmanager.env` when present;
+    - reference copies of OpenASICManager systemd/nginx configuration when
+      present;
+    - `manifest.json` with source version, file sizes and SHA-256 checksums.
+
+Backup directories are created with restrictive permissions. The environment
+file may contain ASIC credentials, Telegram tokens and Remote Web secrets, so
+backup storage must still be protected accordingly.
+
+Verify a backup before restore:
+
+    sudo /opt/openasicmanager/scripts/openasicmanager-backup \
+        verify \
+        /var/backups/openasicmanager/openasicmanager-YYYYMMDDTHHMMSSZ-xxxxxxxx
+
+Verification checks every recorded file checksum and runs SQLite
+`PRAGMA quick_check` against the archived database.
+
+Restore is deliberately a separate state-changing operation. Stop the
+application first:
+
+    sudo systemctl stop openasicmanager.service
+
+Then restore a verified backup:
+
+    sudo /opt/openasicmanager/scripts/openasicmanager-backup \
+        restore \
+        /var/backups/openasicmanager/openasicmanager-YYYYMMDDTHHMMSSZ-xxxxxxxx \
+        --yes
+
+By default, restore refuses to run while `openasicmanager.service` is active.
+The existing database/configuration are preserved as rollback copies during the
+restore operation, and a failed partial restore attempts to return the previous
+state.
+
+The database and environment file are the restorable application state.
+Captured systemd/nginx files are retained as recovery references and are not
+automatically written back by the restore command.
+
+After a successful restore:
+
+    sudo systemctl start openasicmanager.service
+
+Then verify:
+
+    curl http://127.0.0.1:8088/health
 
 ## 14. Uninstall
 
@@ -283,5 +330,7 @@ Then remove installed files only after backing up any data you want to keep.
 Do not delete:
 
     /var/lib/openasicmanager
+    /var/backups/openasicmanager
 
-until you have verified that the database is no longer required.
+until you have verified that the database and backup sets are no longer
+required.

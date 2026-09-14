@@ -42,6 +42,40 @@ class AnomalyPolicyTests(unittest.TestCase):
             policy.overheat_observed(81.9, True)
         )
 
+    def test_temperature_hysteresis_accepts_custom_thresholds(self):
+        self.assertFalse(
+            policy.overheat_observed(
+                89.9,
+                False,
+                hot_temp_c=90.0,
+                hot_clear_c=86.0,
+            )
+        )
+        self.assertTrue(
+            policy.overheat_observed(
+                90.0,
+                False,
+                hot_temp_c=90.0,
+                hot_clear_c=86.0,
+            )
+        )
+        self.assertTrue(
+            policy.overheat_observed(
+                86.0,
+                True,
+                hot_temp_c=90.0,
+                hot_clear_c=86.0,
+            )
+        )
+        self.assertFalse(
+            policy.overheat_observed(
+                85.9,
+                True,
+                hot_temp_c=90.0,
+                hot_clear_c=86.0,
+            )
+        )
+
     def test_schedule_applicability(self):
         self.assertTrue(
             policy.schedule_applicable(
@@ -177,34 +211,44 @@ class AnomalyRepositoryTests(unittest.TestCase):
 
     def test_service_emits_open_and_resolved_events(self):
         runtime = FakeRuntime()
+        anomaly_policy = dict(
+            policy.DEFAULT_ANOMALY_POLICY
+        )
+        anomaly_policy[
+            "offline_grace_seconds"
+        ] = 0
 
-        old_grace = service.ANOMALY_OFFLINE_GRACE
-        service.ANOMALY_OFFLINE_GRACE = 0
-        try:
-            service.anomaly_scan(runtime)
-            service.anomaly_scan(runtime)
+        service.anomaly_scan(
+            runtime,
+            anomaly_policy=anomaly_policy,
+        )
+        service.anomaly_scan(
+            runtime,
+            anomaly_policy=anomaly_policy,
+        )
 
-            self.assertEqual(
-                runtime.events[-1]["action"],
-                "ISSUE_OPEN",
-            )
+        self.assertEqual(
+            runtime.events[-1]["action"],
+            "ISSUE_OPEN",
+        )
 
-            conn = db()
-            conn.execute(
-                "UPDATE miners SET last_state='MINING' WHERE id=?",
-                (self.miner_id,),
-            )
-            conn.commit()
-            conn.close()
+        conn = db()
+        conn.execute(
+            "UPDATE miners SET last_state='MINING' WHERE id=?",
+            (self.miner_id,),
+        )
+        conn.commit()
+        conn.close()
 
-            service.anomaly_scan(runtime)
+        service.anomaly_scan(
+            runtime,
+            anomaly_policy=anomaly_policy,
+        )
 
-            self.assertEqual(
-                runtime.events[-1]["action"],
-                "ISSUE_RESOLVED",
-            )
-        finally:
-            service.ANOMALY_OFFLINE_GRACE = old_grace
+        self.assertEqual(
+            runtime.events[-1]["action"],
+            "ISSUE_RESOLVED",
+        )
 
 
 if __name__ == "__main__":

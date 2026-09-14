@@ -59,6 +59,7 @@ class AppCompositionTests(unittest.TestCase):
         self.assertEqual(registered, {
             "create_notifications_router",
             "create_scheduler_router",
+            "create_anomaly_router",
             "create_telemetry_router",
             "create_operations_router",
             "create_discovery_router",

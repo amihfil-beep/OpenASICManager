@@ -6,10 +6,6 @@ from datetime import datetime
 from scheduler.policy import MOSCOW
 
 from anomalies.policy import (
-    ANOMALY_INTERVAL,
-    ANOMALY_OFFLINE_GRACE,
-    ANOMALY_HOT_GRACE,
-    ANOMALY_SCHEDULE_GRACE,
     normalize_temperature,
     offline_observed,
     overheat_observed,
@@ -18,6 +14,7 @@ from anomalies.policy import (
 from anomalies.repository import (
     active_issue_exists,
     anomaly_scan_snapshot,
+    load_anomaly_policy,
     transition_anomaly_condition,
 )
 
@@ -85,8 +82,14 @@ def anomaly_desired_state(runtime):
     )
 
 
-def anomaly_scan(runtime):
+def anomaly_scan(
+    runtime,
+    anomaly_policy=None,
+):
     now = int(time.time())
+
+    if anomaly_policy is None:
+        anomaly_policy = load_anomaly_policy()
 
     scheduler_enabled, miners = (
         anomaly_scan_snapshot()
@@ -134,7 +137,11 @@ def anomaly_scan(runtime):
             code="OFFLINE",
             severity="CRITICAL",
             observed=offline,
-            grace_seconds=ANOMALY_OFFLINE_GRACE,
+            grace_seconds=(
+                anomaly_policy[
+                    "offline_grace_seconds"
+                ]
+            ),
             message=(
                 "ASIC is offline"
                 if offline
@@ -154,6 +161,16 @@ def anomaly_scan(runtime):
         hot = overheat_observed(
             temp_value,
             hot_active,
+            hot_temp_c=(
+                anomaly_policy[
+                    "hot_temp_c"
+                ]
+            ),
+            hot_clear_c=(
+                anomaly_policy[
+                    "hot_clear_c"
+                ]
+            ),
         )
 
         set_anomaly_condition(
@@ -162,7 +179,11 @@ def anomaly_scan(runtime):
             code="OVERHEAT",
             severity="CRITICAL",
             observed=hot,
-            grace_seconds=ANOMALY_HOT_GRACE,
+            grace_seconds=(
+                anomaly_policy[
+                    "hot_grace_seconds"
+                ]
+            ),
             message=(
                 f"Temperature {temp_value:.1f} C"
                 if temp_value is not None
@@ -195,7 +216,11 @@ def anomaly_scan(runtime):
             code="SCHEDULE_MISMATCH",
             severity="WARNING",
             observed=mismatch,
-            grace_seconds=ANOMALY_SCHEDULE_GRACE,
+            grace_seconds=(
+                anomaly_policy[
+                    "schedule_grace_seconds"
+                ]
+            ),
             message=(
                 f"Expected {desired}; actual {state}"
                 if applicable
@@ -205,12 +230,20 @@ def anomaly_scan(runtime):
 
 
 def anomaly_loop(runtime):
-    if runtime.stop_event.wait(30):
+    anomaly_policy = load_anomaly_policy()
+
+    if runtime.stop_event.wait(
+        anomaly_policy["interval_seconds"]
+    ):
         return
 
     while not runtime.stop_event.is_set():
         try:
-            anomaly_scan(runtime)
+            anomaly_policy = load_anomaly_policy()
+            anomaly_scan(
+                runtime,
+                anomaly_policy=anomaly_policy,
+            )
         except Exception as exc:
             runtime.log_event(
                 source="SYSTEM",
@@ -222,8 +255,9 @@ def anomaly_loop(runtime):
                 ),
             )
 
+        anomaly_policy = load_anomaly_policy()
         if runtime.stop_event.wait(
-            ANOMALY_INTERVAL
+            anomaly_policy["interval_seconds"]
         ):
             return
 

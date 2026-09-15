@@ -787,6 +787,7 @@ a:hover {
 
 .schedule-rule-field input[type="text"],
 .schedule-rule-field input[type="time"],
+.schedule-rule-field input[type="number"],
 .schedule-rule-field select {
     width: 100%;
     box-sizing: border-box;
@@ -1433,6 +1434,14 @@ a:hover {
         onclick="openFarmHistory()"
     >
         FARM HISTORY
+    </button>
+
+
+    <button
+        class="secondary"
+        onclick="openAnomalyPolicy()"
+    >
+        ALERT POLICY
     </button>
 
 
@@ -2252,6 +2261,188 @@ a:hover {
             id="scheduleRuleSaveButton"
             class="start"
             onclick="saveScheduleRule()"
+        >
+            SAVE
+        </button>
+
+    </div>
+
+</div>
+
+</div>
+
+
+<div
+    id="anomalyPolicyBackdrop"
+    class="modal-backdrop"
+    onclick="anomalyPolicyBackdropClick(event)"
+>
+
+<div
+    class="history-modal schedule-rule-modal"
+    onclick="event.stopPropagation()"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2 style="margin:0">
+                Alert Policy
+            </h2>
+
+            <div class="muted">
+                Global anomaly thresholds and grace periods.
+                Changes affect alert detection only and do not
+                directly control ASICs.
+            </div>
+
+        </div>
+
+
+        <button
+            class="close-button"
+            onclick="closeAnomalyPolicy()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div class="schedule-rule-form-grid">
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyIntervalSeconds">
+                Scan interval, seconds
+            </label>
+
+            <input
+                id="anomalyIntervalSeconds"
+                type="number"
+                min="5"
+                max="3600"
+                step="1"
+            >
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyOfflineGraceSeconds">
+                Offline grace, seconds
+            </label>
+
+            <input
+                id="anomalyOfflineGraceSeconds"
+                type="number"
+                min="0"
+                max="86400"
+                step="1"
+            >
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyHotTempC">
+                Hot threshold, °C
+            </label>
+
+            <input
+                id="anomalyHotTempC"
+                type="number"
+                min="40"
+                max="120"
+                step="0.1"
+            >
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyHotClearC">
+                Hot clear threshold, °C
+            </label>
+
+            <input
+                id="anomalyHotClearC"
+                type="number"
+                min="30"
+                max="119.9"
+                step="0.1"
+            >
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyHotGraceSeconds">
+                Hot grace, seconds
+            </label>
+
+            <input
+                id="anomalyHotGraceSeconds"
+                type="number"
+                min="0"
+                max="86400"
+                step="1"
+            >
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
+            <label for="anomalyScheduleGraceSeconds">
+                Schedule mismatch grace, seconds
+            </label>
+
+            <input
+                id="anomalyScheduleGraceSeconds"
+                type="number"
+                min="0"
+                max="86400"
+                step="1"
+            >
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="anomalyPolicyStatus"
+        class="history-status"
+    >
+    </div>
+
+
+    <div class="schedule-rule-form-actions">
+
+        <button
+            class="secondary"
+            onclick="resetAnomalyPolicyDefaults()"
+        >
+            LOAD DEFAULTS
+        </button>
+
+        <button
+            class="secondary"
+            onclick="closeAnomalyPolicy()"
+        >
+            CANCEL
+        </button>
+
+        <button
+            id="anomalyPolicySaveButton"
+            class="start"
+            onclick="saveAnomalyPolicy()"
         >
             SAVE
         </button>
@@ -4068,6 +4259,298 @@ document.addEventListener(
         ) {
 
             closeIssues();
+        }
+    }
+);
+
+
+let anomalyPolicyOpen = false;
+let anomalyPolicyDefaults = null;
+
+
+function setAnomalyPolicyForm(
+    policy
+) {
+
+    document.getElementById(
+        "anomalyIntervalSeconds"
+    ).value =
+        policy.interval_seconds;
+
+    document.getElementById(
+        "anomalyOfflineGraceSeconds"
+    ).value =
+        policy.offline_grace_seconds;
+
+    document.getElementById(
+        "anomalyHotTempC"
+    ).value =
+        policy.hot_temp_c;
+
+    document.getElementById(
+        "anomalyHotClearC"
+    ).value =
+        policy.hot_clear_c;
+
+    document.getElementById(
+        "anomalyHotGraceSeconds"
+    ).value =
+        policy.hot_grace_seconds;
+
+    document.getElementById(
+        "anomalyScheduleGraceSeconds"
+    ).value =
+        policy.schedule_grace_seconds;
+}
+
+
+function anomalyPolicyFormData() {
+
+    return {
+        interval_seconds:
+            Number(
+                document.getElementById(
+                    "anomalyIntervalSeconds"
+                ).value
+            ),
+
+        offline_grace_seconds:
+            Number(
+                document.getElementById(
+                    "anomalyOfflineGraceSeconds"
+                ).value
+            ),
+
+        hot_temp_c:
+            Number(
+                document.getElementById(
+                    "anomalyHotTempC"
+                ).value
+            ),
+
+        hot_clear_c:
+            Number(
+                document.getElementById(
+                    "anomalyHotClearC"
+                ).value
+            ),
+
+        hot_grace_seconds:
+            Number(
+                document.getElementById(
+                    "anomalyHotGraceSeconds"
+                ).value
+            ),
+
+        schedule_grace_seconds:
+            Number(
+                document.getElementById(
+                    "anomalyScheduleGraceSeconds"
+                ).value
+            )
+    };
+}
+
+
+async function openAnomalyPolicy() {
+
+    anomalyPolicyOpen = true;
+
+    document.getElementById(
+        "anomalyPolicyBackdrop"
+    ).classList.add(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+
+    const status =
+        document.getElementById(
+            "anomalyPolicyStatus"
+        );
+
+    status.textContent =
+        "Loading alert policy...";
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/anomaly-policy"
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                || "Alert policy request failed"
+            );
+        }
+
+        anomalyPolicyDefaults =
+            data.defaults;
+
+        setAnomalyPolicyForm(
+            data.policy
+        );
+
+        status.textContent =
+            "Current policy loaded.";
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            "Alert policy error: "
+            + error.message;
+    }
+}
+
+
+function closeAnomalyPolicy() {
+
+    anomalyPolicyOpen = false;
+
+    document.getElementById(
+        "anomalyPolicyBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function anomalyPolicyBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        === "anomalyPolicyBackdrop"
+    ) {
+
+        closeAnomalyPolicy();
+    }
+}
+
+
+function resetAnomalyPolicyDefaults() {
+
+    const status =
+        document.getElementById(
+            "anomalyPolicyStatus"
+        );
+
+    if (!anomalyPolicyDefaults) {
+
+        status.textContent =
+            "Defaults are not loaded yet.";
+
+        return;
+    }
+
+    setAnomalyPolicyForm(
+        anomalyPolicyDefaults
+    );
+
+    status.textContent =
+        "Default values loaded into the form. "
+        + "Press SAVE to apply them.";
+}
+
+
+async function saveAnomalyPolicy() {
+
+    const status =
+        document.getElementById(
+            "anomalyPolicyStatus"
+        );
+
+    const button =
+        document.getElementById(
+            "anomalyPolicySaveButton"
+        );
+
+    button.disabled = true;
+
+    status.textContent =
+        "Saving alert policy...";
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/anomaly-policy",
+                {
+                    method: "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            anomalyPolicyFormData()
+                        )
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                || "Alert policy update failed"
+            );
+        }
+
+        setAnomalyPolicyForm(
+            data.policy
+        );
+
+        status.textContent =
+            "Saved. New values will be used "
+            + "by anomaly detection without "
+            + "a service restart.";
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            "Alert policy error: "
+            + error.message;
+
+    }
+
+    finally {
+
+        button.disabled = false;
+    }
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            anomalyPolicyOpen
+        ) {
+
+            closeAnomalyPolicy();
         }
     }
 );

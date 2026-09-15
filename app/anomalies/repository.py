@@ -1,8 +1,87 @@
-"""SQLite persistence for anomaly candidates and issues."""
+"""SQLite persistence for anomaly policy, candidates and issues."""
 
 import time
 
+from anomalies.policy import (
+    ANOMALY_POLICY_FIELDS,
+    DEFAULT_ANOMALY_POLICY,
+    normalize_anomaly_policy,
+)
 from db import db
+
+
+ANOMALY_POLICY_SETTING_KEYS = {
+    field: f"anomaly.{field}"
+    for field in ANOMALY_POLICY_FIELDS
+}
+
+
+def load_anomaly_policy():
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT key, value
+            FROM settings
+            WHERE key LIKE 'anomaly.%'
+        """).fetchall()
+    finally:
+        conn.close()
+
+    values = dict(DEFAULT_ANOMALY_POLICY)
+    reverse_keys = {
+        setting_key: field
+        for field, setting_key
+        in ANOMALY_POLICY_SETTING_KEYS.items()
+    }
+
+    for row in rows:
+        field = reverse_keys.get(
+            row["key"]
+        )
+        if field:
+            values[field] = row["value"]
+
+    try:
+        return normalize_anomaly_policy(
+            values
+        )
+    except ValueError:
+        # Invalid values can only appear after manual DB editing or
+        # corruption because normal writes are validated. Falling back
+        # to the documented defaults keeps anomaly detection available.
+        return dict(DEFAULT_ANOMALY_POLICY)
+
+
+def save_anomaly_policy(policy):
+    normalized = normalize_anomaly_policy(
+        policy
+    )
+
+    conn = db()
+    try:
+        conn.executemany("""
+            INSERT INTO settings(
+                key,
+                value
+            )
+            VALUES (?, ?)
+
+            ON CONFLICT(key)
+            DO UPDATE SET
+                value=excluded.value
+        """, [
+            (
+                ANOMALY_POLICY_SETTING_KEYS[field],
+                str(normalized[field]),
+            )
+            for field in ANOMALY_POLICY_FIELDS
+        ])
+        conn.commit()
+    finally:
+        conn.close()
+
+    return normalized
 
 
 def active_issue_exists(miner_id, code):
@@ -269,6 +348,9 @@ def issue_rows(limit=100):
 
 
 __all__ = (
+    "ANOMALY_POLICY_SETTING_KEYS",
+    "load_anomaly_policy",
+    "save_anomaly_policy",
     "active_issue_exists",
     "anomaly_scan_snapshot",
     "transition_anomaly_condition",

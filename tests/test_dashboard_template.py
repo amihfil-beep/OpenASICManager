@@ -30,6 +30,30 @@ class DashboardTemplateTests(unittest.TestCase):
             dashboard_html(),
         )
 
+    def test_dashboard_contains_anomaly_policy_editor(self):
+        content = dashboard_html()
+
+        expected = (
+            "ALERT POLICY",
+            "anomalyPolicyBackdrop",
+            "anomalyIntervalSeconds",
+            "anomalyOfflineGraceSeconds",
+            "anomalyHotTempC",
+            "anomalyHotClearC",
+            "anomalyHotGraceSeconds",
+            "anomalyScheduleGraceSeconds",
+            "/api/anomaly-policy",
+            "saveAnomalyPolicy",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
 
 if __name__ == "__main__":
     unittest.main()

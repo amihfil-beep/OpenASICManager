@@ -122,6 +122,11 @@ The history APIs return range and bucket metadata. Empty buckets are
 left absent so missing telemetry remains distinguishable from measured
 zero values.
 
+The dashboard uses that metadata for selectable miner and farm charts.
+It shows the selected range, bucket size, observed and missing point
+counts, and local timestamps. Lines break across missing buckets and
+unsupported metrics instead of drawing misleading zero values.
+
 Current anomaly logic includes conditions such as:
 
 - ASIC offline;

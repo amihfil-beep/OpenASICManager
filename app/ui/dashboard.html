@@ -470,6 +470,20 @@ a:hover {
     color: #9299a8;
 }
 
+.history-gap-note {
+    margin: -2px 0 14px;
+    color: #9299a8;
+    font-size: 12px;
+}
+
+.history-gap-swatch {
+    display: inline-block;
+    width: 18px;
+    margin-right: 6px;
+    border-top: 2px dashed #7ab8ff;
+    vertical-align: middle;
+}
+
 .close-button {
     background: #c84b50;
     color: white;
@@ -2651,6 +2665,11 @@ a:hover {
     >
     </div>
 
+    <div class="history-gap-note">
+        <span class="history-gap-swatch"></span>
+        Line breaks indicate missing telemetry; measured zero remains visible.
+    </div>
+
 
     <div class="farm-summary-grid">
 
@@ -2977,6 +2996,11 @@ a:hover {
         id="historyStatus"
         class="history-status"
     >
+    </div>
+
+    <div class="history-gap-note">
+        <span class="history-gap-swatch"></span>
+        Line breaks indicate missing telemetry; measured zero remains visible.
     </div>
 
 
@@ -4611,10 +4635,226 @@ function farmHistoryBackdropClick(
 }
 
 
+function historyMetadata(
+    data,
+    hours
+) {
+
+    const metadata =
+        data.metadata || {};
+
+    const pointCount =
+        Number.isFinite(
+            Number(
+                metadata.point_count
+            )
+        )
+        ? Number(
+            metadata.point_count
+        )
+        : (data.points || []).length;
+
+    const expectedPointCount =
+        Number.isFinite(
+            Number(
+                metadata.expected_point_count
+            )
+        )
+        ? Number(
+            metadata.expected_point_count
+        )
+        : pointCount;
+
+    return {
+        range:
+            metadata.range
+            || (
+                hours === 24
+                ? "24h"
+                : hours === 168
+                ? "7d"
+                : hours === 720
+                ? "30d"
+                : "90d"
+            ),
+
+        bucketSeconds:
+            Number(
+                metadata.bucket_seconds
+                || data.bucket_seconds
+                || 0
+            ),
+
+        pointCount,
+
+        expectedPointCount,
+
+        missingPointCount:
+            Number.isFinite(
+                Number(
+                    metadata.missing_point_count
+                )
+            )
+            ? Number(
+                metadata.missing_point_count
+            )
+            : Math.max(
+                expectedPointCount
+                - pointCount,
+                0
+            ),
+
+        since:
+            metadata.since || null,
+
+        until:
+            metadata.until || null,
+    };
+}
+
+
+function historyBucketLabel(
+    seconds
+) {
+
+    if (!seconds) {
+        return "unknown";
+    }
+
+    if (seconds % 3600 === 0) {
+        return (seconds / 3600) + " h";
+    }
+
+    return (seconds / 60) + " min";
+}
+
+
+function historyStatusText(
+    metadata
+) {
+
+    let text =
+        "Range: "
+        + metadata.range
+        + " · Bucket: "
+        + historyBucketLabel(
+            metadata.bucketSeconds
+        )
+        + " · Points: "
+        + metadata.pointCount
+        + "/"
+        + metadata.expectedPointCount
+        + " · Missing: "
+        + metadata.missingPointCount;
+
+    if (
+        metadata.since
+        && metadata.until
+    ) {
+        text +=
+            " · "
+            + new Date(
+                metadata.since
+            ).toLocaleString()
+            + " — "
+            + new Date(
+                metadata.until
+            ).toLocaleString();
+    }
+
+    return text;
+}
+
+
+function historySegments(
+    points,
+    field,
+    bucketSeconds,
+    converter=null
+) {
+
+    const segments = [];
+    let segment = [];
+    let previousTimestamp = null;
+    const maximumGap =
+        bucketSeconds > 0
+        ? bucketSeconds * 1500
+        : Infinity;
+
+    function finishSegment() {
+
+        if (segment.length) {
+            segments.push(segment);
+            segment = [];
+        }
+
+        previousTimestamp = null;
+    }
+
+    for (const point of points) {
+
+        const rawValue =
+            point[field];
+
+        const timestamp =
+            new Date(
+                point.time
+            ).getTime();
+
+        if (
+            rawValue === null
+            || rawValue === undefined
+            || !Number.isFinite(timestamp)
+        ) {
+            finishSegment();
+            continue;
+        }
+
+        let value =
+            Number(rawValue);
+
+        if (!Number.isFinite(value)) {
+            finishSegment();
+            continue;
+        }
+
+        if (converter) {
+            value = converter(value);
+        }
+
+        if (!Number.isFinite(value)) {
+            finishSegment();
+            continue;
+        }
+
+        if (
+            previousTimestamp !== null
+            && timestamp
+                - previousTimestamp
+                > maximumGap
+        ) {
+            finishSegment();
+        }
+
+        segment.push({
+            timestamp,
+            value
+        });
+
+        previousTimestamp =
+            timestamp;
+    }
+
+    finishSegment();
+    return segments;
+}
+
+
 function drawMultiLineChart(
     canvasId,
     points,
-    series
+    series,
+    bucketSeconds=0
 ) {
 
     const canvas =
@@ -4717,7 +4957,28 @@ function drawMultiLineChart(
                 new Date(
                     p.time
                 ).getTime()
+        ).filter(
+            value =>
+                Number.isFinite(value)
         );
+
+
+    if (!times.length) {
+
+        ctx.fillStyle =
+            "#9299a8";
+
+        ctx.font =
+            "11px system-ui";
+
+        ctx.fillText(
+            "No historical data",
+            left,
+            35
+        );
+
+        return;
+    }
 
 
     let minTime =
@@ -4740,28 +5001,19 @@ function drawMultiLineChart(
         of series
     ) {
 
-        for (
-            const point
-            of points
-        ) {
+        const segments =
+            historySegments(
+                points,
+                definition.field,
+                bucketSeconds
+            );
 
-            const value =
-                Number(
-                    point[
-                        definition.field
-                    ]
-                    || 0
-                );
-
-
-            if (
-                Number.isFinite(value)
-            ) {
-
+        for (const segment of segments) {
+            for (const point of segment) {
                 maxValue =
                     Math.max(
                         maxValue,
-                        value
+                        point.value
                     );
             }
         }
@@ -4935,60 +5187,58 @@ function drawMultiLineChart(
 
             ctx.lineWidth = 2;
 
-            ctx.beginPath();
+            const segments =
+                historySegments(
+                    points,
+                    definition.field,
+                    bucketSeconds
+                );
 
-            let started = false;
+            for (const segment of segments) {
 
+                ctx.beginPath();
 
-            for (
-                const point
-                of points
-            ) {
+                if (segment.length === 1) {
 
-                const timestamp =
-                    new Date(
-                        point.time
-                    ).getTime();
-
-
-                const value =
-                    Number(
-                        point[
-                            definition.field
-                        ]
-                        || 0
+                    ctx.arc(
+                        x(segment[0].timestamp),
+                        y(segment[0].value),
+                        2,
+                        0,
+                        Math.PI * 2
                     );
 
-
-                const xx =
-                    x(timestamp);
-
-                const yy =
-                    y(value);
-
-
-                if (!started) {
-
-                    ctx.moveTo(
-                        xx,
-                        yy
-                    );
-
-                    started = true;
-
+                    ctx.stroke();
+                    continue;
                 }
 
-                else {
+                segment.forEach(
+                    (
+                        point,
+                        pointIndex
+                    ) => {
 
-                    ctx.lineTo(
-                        xx,
-                        yy
-                    );
-                }
+                        const xx =
+                            x(
+                                point.timestamp
+                            );
+
+                        const yy =
+                            y(
+                                point.value
+                            );
+
+                        if (pointIndex === 0) {
+                            ctx.moveTo(xx, yy);
+                        }
+                        else {
+                            ctx.lineTo(xx, yy);
+                        }
+                    }
+                );
+
+                ctx.stroke();
             }
-
-
-            ctx.stroke();
         }
     );
 
@@ -5217,6 +5467,13 @@ async function loadFarmHistory() {
             data;
 
 
+        const metadata =
+            historyMetadata(
+                data,
+                hours
+            );
+
+
         const current =
             data.current;
 
@@ -5277,14 +5534,9 @@ async function loadFarmHistory() {
 
 
         status.textContent =
-            "Historical points: "
-            + data.points.length
-            + " · Bucket: "
-            + (
-                data.bucket_seconds
-                / 60
-            )
-            + " min";
+            historyStatusText(
+                metadata
+            );
 
 
         updateChartSummary(
@@ -5317,7 +5569,9 @@ async function loadFarmHistory() {
             "farmHashrateChart",
             data.points,
             "hashrate",
-            "TH/s"
+            "TH/s",
+            null,
+            metadata.bucketSeconds
         );
 
 
@@ -5327,7 +5581,8 @@ async function loadFarmHistory() {
             "power",
             "kW",
             value =>
-                value / 1000
+                value / 1000,
+            metadata.bucketSeconds
         );
 
 
@@ -5335,7 +5590,9 @@ async function loadFarmHistory() {
             "farmTempChart",
             data.points,
             "max_temp",
-            "°C"
+            "°C",
+            null,
+            metadata.bucketSeconds
         );
 
 
@@ -5355,7 +5612,8 @@ async function loadFarmHistory() {
                     field: "offline",
                     label: "OFFLINE"
                 }
-            ]
+            ],
+            metadata.bucketSeconds
         );
 
 
@@ -5370,6 +5628,85 @@ async function loadFarmHistory() {
         status.textContent =
             "Farm history error: "
             + error.message;
+
+        for (
+            const elementId
+            of [
+                "farmNowMining",
+                "farmNowPaused",
+                "farmNowOffline",
+                "farmNowHashrate",
+                "farmNowPower",
+                "farmNowTemp",
+            ]
+        ) {
+            document.getElementById(
+                elementId
+            ).textContent = "—";
+        }
+
+        updateChartSummary(
+            "farmHashrateSummary",
+            [],
+            "hashrate",
+            "TH/s"
+        );
+
+        updateChartSummary(
+            "farmPowerSummary",
+            [],
+            "power",
+            "kW"
+        );
+
+        updateChartSummary(
+            "farmTempSummary",
+            [],
+            "max_temp",
+            "°C"
+        );
+
+        document.getElementById(
+            "farmProblemSummary"
+        ).textContent =
+            "Problem history unavailable.";
+
+        document.getElementById(
+            "farmProblemRows"
+        ).innerHTML = `
+            <tr>
+                <td colspan="7">
+                    Farm history could not be loaded.
+                </td>
+            </tr>
+        `;
+
+        drawLineChart(
+            "farmHashrateChart",
+            [],
+            "hashrate",
+            "TH/s"
+        );
+
+        drawLineChart(
+            "farmPowerChart",
+            [],
+            "power",
+            "kW"
+        );
+
+        drawLineChart(
+            "farmTempChart",
+            [],
+            "max_temp",
+            "°C"
+        );
+
+        drawMultiLineChart(
+            "farmStateChart",
+            [],
+            []
+        );
     }
 }
 
@@ -5600,7 +5937,8 @@ function drawLineChart(
     points,
     field,
     unit,
-    converter=null
+    converter=null,
+    bucketSeconds=0
 ) {
 
     const canvas =
@@ -5679,65 +6017,16 @@ function drawLineChart(
         - bottom;
 
 
-    const usable = [];
+    const segments =
+        historySegments(
+            points,
+            field,
+            bucketSeconds,
+            converter
+        );
 
-
-    for (
-        const point
-        of points
-    ) {
-
-        let value =
-            point[field];
-
-
-        if (
-            value === null
-            ||
-            value === undefined
-        ) {
-            continue;
-        }
-
-
-        value =
-            Number(value);
-
-
-        if (
-            !Number.isFinite(value)
-        ) {
-            continue;
-        }
-
-
-        if (converter) {
-
-            value =
-                converter(value);
-        }
-
-
-        const timestamp =
-            new Date(
-                point.time
-            ).getTime();
-
-
-        if (
-            !Number.isFinite(
-                timestamp
-            )
-        ) {
-            continue;
-        }
-
-
-        usable.push({
-            timestamp,
-            value
-        });
-    }
+    const usable =
+        segments.flat();
 
 
     ctx.font =
@@ -5750,7 +6039,7 @@ function drawLineChart(
             "#9299a8";
 
         ctx.fillText(
-            "No historical data",
+            "No telemetry for this metric",
             left,
             35
         );
@@ -6007,50 +6296,51 @@ function drawLineChart(
 
     ctx.lineWidth = 2;
 
-    ctx.beginPath();
+    for (const segment of segments) {
 
+        ctx.beginPath();
 
-    let first = true;
+        if (segment.length === 1) {
 
-
-    for (
-        const point
-        of usable
-    ) {
-
-        const xx =
-            x(
-                point.timestamp
+            ctx.arc(
+                x(segment[0].timestamp),
+                y(segment[0].value),
+                2,
+                0,
+                Math.PI * 2
             );
 
-        const yy =
-            y(
-                point.value
-            );
-
-
-        if (first) {
-
-            ctx.moveTo(
-                xx,
-                yy
-            );
-
-            first = false;
-
+            ctx.stroke();
+            continue;
         }
 
-        else {
+        segment.forEach(
+            (
+                point,
+                pointIndex
+            ) => {
 
-            ctx.lineTo(
-                xx,
-                yy
-            );
-        }
+                const xx =
+                    x(
+                        point.timestamp
+                    );
+
+                const yy =
+                    y(
+                        point.value
+                    );
+
+                if (pointIndex === 0) {
+                    ctx.moveTo(xx, yy);
+                }
+                else {
+                    ctx.lineTo(xx, yy);
+                }
+            }
+        );
+
+        ctx.stroke();
     }
-
-
-    ctx.stroke();
 
 
     // Unit
@@ -6118,21 +6408,16 @@ async function loadHistory() {
             data.points || [];
 
 
+        const metadata =
+            historyMetadata(
+                data,
+                hours
+            );
+
+
         status.textContent =
-            "Points: "
-            + points.length
-            + " · Period: "
-            + (
-                hours === 24
-                ? "24 hours"
-                :
-                hours === 168
-                ? "7 days"
-                :
-                hours === 720
-                ? "30 days"
-                :
-                "90 days"
+            historyStatusText(
+                metadata
             );
 
 
@@ -6166,7 +6451,9 @@ async function loadHistory() {
             "hashrateChart",
             points,
             "hashrate",
-            "TH/s"
+            "TH/s",
+            null,
+            metadata.bucketSeconds
         );
 
 
@@ -6174,7 +6461,9 @@ async function loadHistory() {
             "temperatureChart",
             points,
             "temp",
-            "°C"
+            "°C",
+            null,
+            metadata.bucketSeconds
         );
 
 
@@ -6184,7 +6473,8 @@ async function loadHistory() {
             "power",
             "kW",
             value =>
-                value / 1000
+                value / 1000,
+            metadata.bucketSeconds
         );
 
     }
@@ -6194,6 +6484,48 @@ async function loadHistory() {
         status.textContent =
             "History error: "
             + error.message;
+
+        updateChartSummary(
+            "hashrateSummary",
+            [],
+            "hashrate",
+            "TH/s"
+        );
+
+        updateChartSummary(
+            "temperatureSummary",
+            [],
+            "temp",
+            "°C"
+        );
+
+        updateChartSummary(
+            "powerSummary",
+            [],
+            "power",
+            "kW"
+        );
+
+        drawLineChart(
+            "hashrateChart",
+            [],
+            "hashrate",
+            "TH/s"
+        );
+
+        drawLineChart(
+            "temperatureChart",
+            [],
+            "temp",
+            "°C"
+        );
+
+        drawLineChart(
+            "powerChart",
+            [],
+            "power",
+            "kW"
+        );
     }
 }
 

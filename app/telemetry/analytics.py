@@ -14,7 +14,6 @@ from scheduler.policy import MOSCOW
 from telemetry.repository import (
     TELEMETRY_RETENTION_DAYS,
     telemetry_stats_row,
-    telemetry_history_rows,
 )
 
 from telemetry.service import (
@@ -24,6 +23,7 @@ from telemetry.service import (
 
 __all__ = (
     "history_stats",
+    "history_metadata",
     "miner_history_points",
     "farm_history_points",
     "farm_problem_miners",
@@ -69,15 +69,51 @@ def history_stats():
     }
 
 
-def miner_history_points(
-    miner_id,
+def history_metadata(
+    selected_range,
     since,
+    until,
+    point_count,
 ):
+    expected = selected_range.expected_points
 
-    rows = telemetry_history_rows(
-        miner_id,
-        since,
-    )
+    return {
+        "range":
+            selected_range.key,
+
+        "range_hours":
+            selected_range.hours,
+
+        "bucket_seconds":
+            selected_range.bucket_seconds,
+
+        "since":
+            datetime.fromtimestamp(
+                since,
+                MOSCOW,
+            ).isoformat(),
+
+        "until":
+            datetime.fromtimestamp(
+                until,
+                MOSCOW,
+            ).isoformat(),
+
+        "point_count":
+            point_count,
+
+        "expected_point_count":
+            expected,
+
+        "missing_point_count":
+            max(
+                expected - point_count,
+                0,
+            ),
+    }
+
+
+def miner_history_points(rows):
 
     points = []
 
@@ -86,7 +122,7 @@ def miner_history_points(
         points.append({
             "time":
                 datetime.fromtimestamp(
-                    row["ts"],
+                    row["bucket_ts"],
                     MOSCOW,
                 ).isoformat(),
 
@@ -104,6 +140,9 @@ def miner_history_points(
 
             "power":
                 row["power"],
+
+            "sample_count":
+                row["sample_count"],
         })
 
     return points

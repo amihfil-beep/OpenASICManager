@@ -108,6 +108,20 @@ Control operations are verified asynchronously rather than treated as successful
 
 OpenASICManager stores telemetry snapshots and event history.
 
+Miner and farm history use the same bounded ranges and server-side
+downsampling policy:
+
+| Range | Bucket | Maximum points |
+| --- | ---: | ---: |
+| 24 hours | 5 minutes | 288 |
+| 7 days | 15 minutes | 672 |
+| 30 days | 1 hour | 720 |
+| 90 days | 3 hours | 720 |
+
+The history APIs return range and bucket metadata. Empty buckets are
+left absent so missing telemetry remains distinguishable from measured
+zero values.
+
 Current anomaly logic includes conditions such as:
 
 - ASIC offline;

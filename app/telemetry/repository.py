@@ -141,29 +141,87 @@ def telemetry_stats_row():
 def telemetry_history_rows(
     miner_id,
     since,
+    bucket_seconds,
+    until,
 ):
 
     conn = db()
 
     rows = conn.execute("""
+        WITH bucketed AS
+        (
+            SELECT
+                ts,
+                state,
+                hashrate,
+                avg_hashrate,
+                temp,
+                power,
+
+                (
+                    CAST(
+                        ts / ?
+                        AS INTEGER
+                    )
+                    * ?
+                ) AS bucket_ts,
+
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        CAST(
+                            ts / ?
+                            AS INTEGER
+                        )
+
+                    ORDER BY ts DESC
+                ) AS newest_in_bucket
+
+            FROM telemetry
+
+            WHERE
+                miner_id=?
+                AND ts>=?
+                AND ts<=?
+        ),
+
+        aggregated AS
+        (
+            SELECT
+                bucket_ts,
+                COUNT(*) AS sample_count,
+                AVG(hashrate) AS hashrate,
+                AVG(avg_hashrate) AS avg_hashrate,
+                AVG(temp) AS temp,
+                AVG(power) AS power
+
+            FROM bucketed
+
+            GROUP BY bucket_ts
+        )
+
         SELECT
-            ts,
-            state,
-            hashrate,
-            avg_hashrate,
-            temp,
-            power
+            aggregated.bucket_ts,
+            bucketed.state,
+            aggregated.hashrate,
+            aggregated.avg_hashrate,
+            aggregated.temp,
+            aggregated.power,
+            aggregated.sample_count
 
-        FROM telemetry
+        FROM aggregated
 
-        WHERE
-            miner_id=?
-            AND ts>=?
+        JOIN bucketed
+            ON bucketed.bucket_ts = aggregated.bucket_ts
+            AND bucketed.newest_in_bucket = 1
 
-        ORDER BY ts ASC
+        ORDER BY aggregated.bucket_ts ASC
     """, (
+        bucket_seconds,
+        bucket_seconds,
+        bucket_seconds,
         miner_id,
         since,
+        until,
     )).fetchall()
 
     conn.close()
@@ -174,6 +232,7 @@ def telemetry_history_rows(
 def farm_history_rows(
     since,
     bucket_seconds,
+    until,
 ):
 
     conn = db()
@@ -243,7 +302,9 @@ def farm_history_rows(
 
             FROM telemetry
 
-            WHERE ts >= ?
+            WHERE
+                ts >= ?
+                AND ts <= ?
 
             GROUP BY ts
         )
@@ -300,6 +361,7 @@ def farm_history_rows(
         ORDER BY bucket_ts ASC
     """, (
         since,
+        until,
         bucket_seconds,
         bucket_seconds,
     )).fetchall()

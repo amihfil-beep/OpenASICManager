@@ -129,7 +129,15 @@ The telemetry subsystem contains:
 
 - `repository.py` — telemetry snapshots, retention and history queries;
 - `analytics.py` — miner/farm history read models and summary calculations;
+- `history.py` — shared supported ranges and bounded bucket policy;
 - `service.py` — periodic telemetry snapshot collection.
+
+Both miner and farm history endpoints use the same 24-hour, 7-day,
+30-day and 90-day range definitions. Repository queries aggregate data
+into fixed buckets and omit empty buckets instead of interpolating
+measurements. Responses retain the existing top-level fields and add
+metadata describing the selected range, query window, bucket size,
+observed point count and missing bucket count.
 
 ### app/anomalies/
 

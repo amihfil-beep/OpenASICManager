@@ -69,6 +69,51 @@ class TelemetryRoutesTests(unittest.TestCase):
                 endpoint(1, 2)
         self.assertEqual(caught.exception.status_code, 400)
 
+    @patch("api.telemetry.telemetry_history_rows")
+    @patch("api.telemetry.time.time")
+    @patch("api.telemetry.get_miner")
+    def test_miner_history_uses_bounded_90_day_buckets(
+        self,
+        get_miner,
+        now,
+        history_rows,
+    ):
+        get_miner.return_value = {
+            "id": 1,
+            "ip": "192.0.2.1",
+            "name": "test",
+            "driver": "bitmain_stock",
+        }
+        now.return_value = 2_000_000_123
+        history_rows.return_value = []
+
+        endpoint = self.endpoint(
+            "/api/history/{miner_id}",
+            "GET",
+        )
+        result = endpoint(1, 2160)
+
+        self.assertEqual(result["hours"], 2160)
+        self.assertEqual(result["bucket_seconds"], 10800)
+        self.assertEqual(result["points"], [])
+        self.assertEqual(
+            result["metadata"]["range"],
+            "90d",
+        )
+        self.assertEqual(
+            result["metadata"]["expected_point_count"],
+            720,
+        )
+        self.assertEqual(
+            result["metadata"]["missing_point_count"],
+            720,
+        )
+
+        args = history_rows.call_args.args
+        self.assertEqual(args[0], 1)
+        self.assertEqual(args[2], 10800)
+        self.assertEqual(args[3], 2_000_000_123)
+
     def test_farm_history_rejects_invalid_hours(self):
         endpoint = self.endpoint(
             "/api/farm/history",
@@ -77,6 +122,51 @@ class TelemetryRoutesTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             endpoint(1)
         self.assertEqual(caught.exception.status_code, 400)
+
+    @patch("api.telemetry.farm_current_rows")
+    @patch("api.telemetry.farm_problem_rows")
+    @patch("api.telemetry.farm_history_rows")
+    @patch("api.telemetry.time.time")
+    def test_farm_and_miner_ranges_share_the_same_policy(
+        self,
+        now,
+        history_rows,
+        problem_rows,
+        current_rows,
+    ):
+        now.return_value = 2_000_000_123
+        history_rows.return_value = []
+        problem_rows.return_value = []
+        current_rows.return_value = []
+
+        endpoint = self.endpoint(
+            "/api/farm/history",
+            "GET",
+        )
+
+        expected = {
+            24: 300,
+            168: 900,
+            720: 3600,
+            2160: 10800,
+        }
+
+        for hours, bucket_seconds in expected.items():
+            with self.subTest(hours=hours):
+                result = endpoint(hours)
+                self.assertEqual(
+                    result["bucket_seconds"],
+                    bucket_seconds,
+                )
+                self.assertEqual(
+                    result["metadata"]["range_hours"],
+                    hours,
+                )
+
+        self.assertEqual(
+            history_rows.call_args.args[1],
+            10800,
+        )
 
 
 if __name__ == "__main__":

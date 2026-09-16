@@ -1,4 +1,5 @@
 import inspect
+import re
 import unittest
 
 from fastapi.responses import HTMLResponse
@@ -52,6 +53,34 @@ class DashboardTemplateTests(unittest.TestCase):
                     marker,
                     content,
                 )
+
+    def test_history_charts_use_bucket_metadata_and_show_gaps(self):
+        content = dashboard_html()
+
+        expected = (
+            "historyMetadata",
+            "historySegments",
+            "metadata.bucket_seconds",
+            "metadata.expected_point_count",
+            "metadata.missing_point_count",
+            "Line breaks indicate missing telemetry",
+            "No telemetry for this metric",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, content)
+
+    def test_farm_history_does_not_coerce_missing_series_to_zero(self):
+        content = dashboard_html()
+
+        missing_as_zero = re.compile(
+            r"point\s*\[\s*definition\.field\s*\]\s*\|\|\s*0"
+        )
+
+        self.assertIsNone(
+            missing_as_zero.search(content)
+        )
 
 
 

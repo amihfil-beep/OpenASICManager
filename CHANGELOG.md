@@ -2,6 +2,15 @@
 
 All notable changes to OpenASICManager will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Miner and farm history charts now expose range and bucket metadata,
+  preserve real zero readings, and break lines across missing telemetry.
+- History loading, empty-data and API-error states now clear stale charts
+  and report missing bucket counts with explicit local timestamps.
+
 ## [0.3.0] - 2026-09-11
 
 Operational-safety release focused on making public OpenASICManager installations easier to back up, diagnose, upgrade and maintain without weakening the application's privilege boundaries.

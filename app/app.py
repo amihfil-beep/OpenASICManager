@@ -11,6 +11,7 @@ from api.anomalies import create_anomaly_router
 from api.audit_auth import create_audit_auth_router
 from api.control import create_control_router
 from api.discovery import create_discovery_router
+from api.discovery_profiles import create_discovery_profiles_router
 from api.inventory import create_inventory_router
 from api.notifications import create_notifications_router
 from api.operations import create_operations_router
@@ -161,6 +162,11 @@ app.include_router(
     create_discovery_router(
         poll_miner,
         log_event,
+    )
+)
+app.include_router(
+    create_discovery_profiles_router(
+        log_event
     )
 )
 app.include_router(

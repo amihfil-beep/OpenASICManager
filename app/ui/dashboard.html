@@ -1608,9 +1608,167 @@ a:hover {
         </h3>
 
         <div class="muted small">
-            Enter IPv4 network in CIDR format.
-            Scan is read-only and only devices
-            with ASIC signatures are returned.
+            Discovery is read-only.
+            Saved profiles can scan several RFC1918
+            networks while the manual single-network
+            scan remains available below.
+        </div>
+
+
+        <div
+            style="
+                margin-top:16px;
+                padding-top:14px;
+                border-top:1px solid #2c323d;
+            "
+        >
+
+            <div
+                style="
+                    display:flex;
+                    justify-content:space-between;
+                    gap:12px;
+                    align-items:center;
+                    flex-wrap:wrap;
+                "
+            >
+
+                <div>
+
+                    <strong>
+                        Saved Networks
+                    </strong>
+
+                    <div
+                        id="discoveryProfilesStatus"
+                        class="muted small"
+                        style="margin-top:3px"
+                    >
+                        Loading saved networks...
+                    </div>
+
+                </div>
+
+
+                <button
+                    id="discoveryProfilesScanAllButton"
+                    class="start"
+                    onclick="scanDiscoveryProfiles()"
+                >
+                    SCAN ALL ENABLED
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    display:flex;
+                    gap:8px;
+                    flex-wrap:wrap;
+                    margin-top:12px;
+                    align-items:center;
+                "
+            >
+
+                <input
+                    id="discoveryProfileName"
+                    type="text"
+                    maxlength="80"
+                    placeholder="Profile name"
+                    style="
+                        flex:1;
+                        min-width:170px;
+                        background:#111318;
+                        color:white;
+                        border:1px solid #343b48;
+                        border-radius:7px;
+                        padding:9px 11px;
+                    "
+                >
+
+                <input
+                    id="discoveryProfileNetwork"
+                    type="text"
+                    placeholder="192.168.1.0/24"
+                    style="
+                        flex:1;
+                        min-width:180px;
+                        background:#111318;
+                        color:white;
+                        border:1px solid #343b48;
+                        border-radius:7px;
+                        padding:9px 11px;
+                    "
+                >
+
+                <label
+                    class="muted small"
+                    style="
+                        display:flex;
+                        align-items:center;
+                        gap:6px;
+                    "
+                >
+                    <input
+                        id="discoveryProfileEnabled"
+                        type="checkbox"
+                        checked
+                    >
+                    Enabled
+                </label>
+
+                <button
+                    id="discoveryProfileSaveButton"
+                    class="secondary"
+                    onclick="createDiscoveryProfile()"
+                >
+                    + ADD NETWORK
+                </button>
+
+            </div>
+
+
+            <div
+                class="table-wrap"
+                style="margin-top:12px"
+            >
+
+                <table
+                    style="min-width:760px"
+                >
+
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Network</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody
+                        id="discoveryProfileRows"
+                    >
+                        <tr>
+                            <td colspan="4">
+                                Loading...
+                            </td>
+                        </tr>
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+
+        <div
+            class="muted small"
+            style="margin-top:16px"
+        >
+            Manual single-network scan
         </div>
 
         <div
@@ -1696,6 +1854,37 @@ a:hover {
 >
     No scan performed.
 </div>
+
+
+<div
+    id="discoveryNetworkResults"
+    class="table-wrap"
+    style="
+        margin-top:12px;
+        display:none;
+    "
+>
+
+<table style="min-width:760px">
+
+<thead>
+<tr>
+    <th>Saved network</th>
+    <th>CIDR</th>
+    <th>Status</th>
+    <th>Hosts</th>
+    <th>ASICs</th>
+    <th>Time</th>
+</tr>
+</thead>
+
+<tbody id="discoveryNetworkRows">
+</tbody>
+
+</table>
+
+</div>
+
 
 
 <div
@@ -3375,6 +3564,10 @@ function clearDiscoveryResults() {
     ).textContent =
         "No scan performed.";
 
+    renderDiscoveryNetworkResults({
+        networks: []
+    });
+
 
     document.getElementById(
         "toggleDiscoveryButton"
@@ -3392,6 +3585,908 @@ function clearDiscoveryResults() {
         "addAllDiscoveryButton"
     ).style.display =
         "none";
+}
+
+
+window.__discoveryProfiles = [];
+window.__lastDiscoveryProfileIds = null;
+
+
+async function discoveryProfilesApi(
+    path,
+    options={}
+) {
+
+    const response =
+        await fetch(
+            path,
+            options
+        );
+
+    const data =
+        await response.json();
+
+    if (!response.ok) {
+
+        throw new Error(
+            data.detail
+            || "Discovery profile request failed"
+        );
+    }
+
+    return data;
+}
+
+
+function discoveryProfileById(
+    profileId
+) {
+
+    return (
+        window.__discoveryProfiles
+        || []
+    ).find(
+        profile =>
+            Number(profile.id)
+            ===
+            Number(profileId)
+    );
+}
+
+
+function renderDiscoveryProfiles(
+    data
+) {
+
+    const profiles =
+        Array.isArray(data.profiles)
+        ? data.profiles
+        : [];
+
+    window.__discoveryProfiles =
+        profiles;
+
+
+    const status =
+        document.getElementById(
+            "discoveryProfilesStatus"
+        );
+
+    const body =
+        document.getElementById(
+            "discoveryProfileRows"
+        );
+
+
+    status.textContent =
+        profiles.length
+        + " saved network(s)"
+        + " · multi-scan limit "
+        + Number(
+            data.max_scan_networks
+            || 0
+        );
+
+
+    if (!profiles.length) {
+
+        body.innerHTML = `
+            <tr>
+                <td
+                    colspan="4"
+                    class="muted"
+                >
+                    No saved discovery networks.
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+
+    body.innerHTML =
+        profiles.map(
+            profile => `
+
+                <tr>
+
+                    <td>
+                        <strong>
+                            ${esc(profile.name)}
+                        </strong>
+                    </td>
+
+                    <td>
+                        ${esc(profile.network)}
+                    </td>
+
+                    <td>
+                        <span
+                            class="${
+                                profile.enabled
+                                ? "temp-ok"
+                                : "muted"
+                            }"
+                        >
+                            ${
+                                profile.enabled
+                                ? "ENABLED"
+                                : "DISABLED"
+                            }
+                        </span>
+                    </td>
+
+                    <td>
+
+                        <button
+                            class="start mini discovery-profile-scan"
+                            onclick="
+                                scanDiscoveryProfiles(
+                                    [${Number(profile.id)}]
+                                )
+                            "
+                        >
+                            SCAN
+                        </button>
+
+                        <button
+                            class="secondary mini"
+                            onclick="
+                                editDiscoveryProfile(
+                                    ${Number(profile.id)}
+                                )
+                            "
+                        >
+                            EDIT
+                        </button>
+
+                        <button
+                            class="secondary mini"
+                            onclick="
+                                toggleDiscoveryProfile(
+                                    ${Number(profile.id)}
+                                )
+                            "
+                        >
+                            ${
+                                profile.enabled
+                                ? "DISABLE"
+                                : "ENABLE"
+                            }
+                        </button>
+
+                        <button
+                            class="warning-button mini"
+                            onclick="
+                                deleteDiscoveryProfile(
+                                    ${Number(profile.id)}
+                                )
+                            "
+                        >
+                            DELETE
+                        </button>
+
+                    </td>
+
+                </tr>
+            `
+        ).join("");
+}
+
+
+async function loadDiscoveryProfiles() {
+
+    const status =
+        document.getElementById(
+            "discoveryProfilesStatus"
+        );
+
+    try {
+
+        const data =
+            await discoveryProfilesApi(
+                "/api/discovery/profiles"
+            );
+
+        renderDiscoveryProfiles(
+            data
+        );
+
+    }
+    catch (error) {
+
+        if (status) {
+
+            status.textContent =
+                "Saved network error: "
+                + error.message;
+        }
+    }
+}
+
+
+async function createDiscoveryProfile() {
+
+    const nameInput =
+        document.getElementById(
+            "discoveryProfileName"
+        );
+
+    const networkInput =
+        document.getElementById(
+            "discoveryProfileNetwork"
+        );
+
+    const enabledInput =
+        document.getElementById(
+            "discoveryProfileEnabled"
+        );
+
+    const button =
+        document.getElementById(
+            "discoveryProfileSaveButton"
+        );
+
+
+    const name =
+        nameInput.value.trim();
+
+    const network =
+        networkInput.value.trim();
+
+
+    if (!name || !network) {
+
+        alert(
+            "Enter profile name and CIDR network."
+        );
+
+        return;
+    }
+
+
+    try {
+
+        button.disabled =
+            true;
+
+        await discoveryProfilesApi(
+            "/api/discovery/profiles",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        name:
+                            name,
+
+                        network:
+                            network,
+
+                        enabled:
+                            enabledInput.checked
+                    })
+            }
+        );
+
+        nameInput.value =
+            "";
+
+        networkInput.value =
+            "";
+
+        enabledInput.checked =
+            true;
+
+        await loadDiscoveryProfiles();
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        alert(
+            error.message
+        );
+
+    }
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+async function editDiscoveryProfile(
+    profileId
+) {
+
+    const profile =
+        discoveryProfileById(
+            profileId
+        );
+
+    if (!profile) {
+        return;
+    }
+
+
+    const name =
+        window.prompt(
+            "Saved network name:",
+            profile.name
+        );
+
+    if (name === null) {
+        return;
+    }
+
+
+    const network =
+        window.prompt(
+            "RFC1918 CIDR network:",
+            profile.network
+        );
+
+    if (network === null) {
+        return;
+    }
+
+
+    try {
+
+        await discoveryProfilesApi(
+            "/api/discovery/profiles/"
+            + profile.id,
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        name:
+                            name.trim(),
+
+                        network:
+                            network.trim(),
+
+                        enabled:
+                            Boolean(
+                                profile.enabled
+                            )
+                    })
+            }
+        );
+
+        await loadDiscoveryProfiles();
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        alert(
+            error.message
+        );
+    }
+}
+
+
+async function toggleDiscoveryProfile(
+    profileId
+) {
+
+    const profile =
+        discoveryProfileById(
+            profileId
+        );
+
+    if (!profile) {
+        return;
+    }
+
+
+    try {
+
+        await discoveryProfilesApi(
+            "/api/discovery/profiles/"
+            + profile.id,
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        enabled:
+                            !profile.enabled
+                    })
+            }
+        );
+
+        await loadDiscoveryProfiles();
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        alert(
+            error.message
+        );
+    }
+}
+
+
+async function deleteDiscoveryProfile(
+    profileId
+) {
+
+    const profile =
+        discoveryProfileById(
+            profileId
+        );
+
+    if (!profile) {
+        return;
+    }
+
+
+    if (
+        !window.confirm(
+            "DELETE SAVED NETWORK\n\n"
+            + profile.name
+            + "\n"
+            + profile.network
+            + "\n\n"
+            + "This does not delete or modify ASICs."
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        await discoveryProfilesApi(
+            "/api/discovery/profiles/"
+            + profile.id,
+            {
+                method: "DELETE"
+            }
+        );
+
+        await loadDiscoveryProfiles();
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        alert(
+            error.message
+        );
+    }
+}
+
+
+function renderDiscoveryNetworkResults(
+    data
+) {
+
+    const container =
+        document.getElementById(
+            "discoveryNetworkResults"
+        );
+
+    const body =
+        document.getElementById(
+            "discoveryNetworkRows"
+        );
+
+
+    const networks =
+        (
+            data
+            &&
+            Array.isArray(
+                data.networks
+            )
+        )
+        ? data.networks
+        : [];
+
+
+    if (!networks.length) {
+
+        container.style.display =
+            "none";
+
+        body.innerHTML =
+            "";
+
+        return;
+    }
+
+
+    body.innerHTML =
+        networks.map(
+            network => {
+
+                const ok =
+                    network.status
+                    === "ok";
+
+                return `
+
+                    <tr>
+
+                        <td>
+                            <strong>
+                                ${esc(network.profile_name)}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${esc(network.network)}
+                        </td>
+
+                        <td>
+                            <span
+                                class="${
+                                    ok
+                                    ? "temp-ok"
+                                    : "temp-critical"
+                                }"
+                            >
+                                ${
+                                    ok
+                                    ? "OK"
+                                    : "FAILED"
+                                }
+                            </span>
+
+                            ${
+                                network.error
+                                ? `
+                                    <div
+                                        class="error small"
+                                    >
+                                        ${esc(network.error)}
+                                    </div>
+                                `
+                                : ""
+                            }
+                        </td>
+
+                        <td>
+                            ${Number(
+                                network.hosts_scanned
+                                || 0
+                            )}
+                        </td>
+
+                        <td>
+                            ${Number(
+                                network.total
+                                || 0
+                            )}
+                        </td>
+
+                        <td>
+                            ${Number(
+                                network.duration_seconds
+                                || 0
+                            ).toFixed(2)}s
+                        </td>
+
+                    </tr>
+                `;
+            }
+        ).join("");
+
+
+    container.style.display =
+        "block";
+}
+
+
+function discoveryDeviceSource(
+    device,
+    data
+) {
+
+    if (
+        Array.isArray(
+            device.sources
+        )
+        &&
+        device.sources.length > 1
+    ) {
+
+        return device.sources.map(
+            source =>
+                source.profile_name
+                + " · "
+                + source.network
+        ).join(" / ");
+    }
+
+
+    if (
+        device.source_network
+    ) {
+
+        return (
+            (
+                device.source_profile_name
+                ? (
+                    device.source_profile_name
+                    + " · "
+                )
+                : ""
+            )
+            +
+            device.source_network
+        );
+    }
+
+
+    return (
+        data.network
+        || "—"
+    );
+}
+
+
+function discoverySummaryHtml(
+    data
+) {
+
+    if (
+        data.mode
+        === "saved_profiles"
+    ) {
+
+        return `
+            Profiles:
+            <strong>${Number(
+                data.profiles_scanned
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Networks OK:
+            <strong>${Number(
+                data.successful_networks
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Failed:
+            <strong>${Number(
+                data.failed_networks
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Checked:
+            <strong>${Number(
+                data.hosts_scanned
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Found ASIC:
+            <strong>${Number(
+                data.total
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Managed:
+            <strong>${Number(
+                data.managed_count
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            New:
+            <strong>${Number(
+                data.new_known
+                || 0
+            )}</strong>
+            &nbsp; · &nbsp;
+
+            Time:
+            <strong>${Number(
+                data.duration_seconds
+                || 0
+            ).toFixed(2)}s</strong>
+        `;
+    }
+
+
+    return `
+        Network:
+        <strong>${esc(data.network)}</strong>
+        &nbsp; · &nbsp;
+
+        Checked:
+        <strong>${data.hosts_scanned}</strong>
+        &nbsp; · &nbsp;
+
+        Found ASIC:
+        <strong>${data.total}</strong>
+        &nbsp; · &nbsp;
+
+        Managed:
+        <strong>${data.managed_count}</strong>
+        &nbsp; · &nbsp;
+
+        New:
+        <strong>${data.new_known}</strong>
+        &nbsp; · &nbsp;
+
+        Unknown:
+        <strong>${data.new_unknown}</strong>
+        &nbsp; · &nbsp;
+
+        Time:
+        <strong>${data.duration_seconds}s</strong>
+    `;
+}
+
+
+async function scanDiscoveryProfiles(
+    profileIds=null
+) {
+
+    const allButton =
+        document.getElementById(
+            "discoveryProfilesScanAllButton"
+        );
+
+    const rowButtons =
+        document.querySelectorAll(
+            ".discovery-profile-scan"
+        );
+
+
+    allButton.disabled =
+        true;
+
+    rowButtons.forEach(
+        button =>
+            button.disabled = true
+    );
+
+
+    document.getElementById(
+        "discoverySummary"
+    ).textContent =
+        (
+            profileIds === null
+            ? "Scanning all enabled saved networks..."
+            : "Scanning saved network..."
+        );
+
+
+    renderDiscoveryNetworkResults({
+        networks: []
+    });
+
+
+    try {
+
+        const payload =
+            (
+                profileIds === null
+                ? {}
+                : {
+                    profile_ids:
+                        profileIds
+                }
+            );
+
+
+        const data =
+            await discoveryProfilesApi(
+                "/api/discovery/profiles/scan",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        window.__lastDiscoveryProfileIds =
+            (
+                profileIds === null
+                ? null
+                : Array.from(
+                    profileIds
+                )
+            );
+
+
+        lastDiscovery =
+            data;
+
+
+        renderDiscovery(
+            data
+        );
+
+    }
+    catch (error) {
+
+        document.getElementById(
+            "discoverySummary"
+        ).textContent =
+            "Discovery failed: "
+            + error.message;
+
+        alert(
+            error.message
+        );
+
+    }
+    finally {
+
+        allButton.disabled =
+            false;
+
+        document.querySelectorAll(
+            ".discovery-profile-scan"
+        ).forEach(
+            button =>
+                button.disabled = false
+        );
+    }
 }
 
 
@@ -3425,6 +4520,13 @@ async function scanNetwork() {
         "asicDiscoveryNetwork",
         network
     );
+
+    window.__lastDiscoveryProfileIds =
+        undefined;
+
+    renderDiscoveryNetworkResults({
+        networks: []
+    });
 
 
     button.disabled = true;
@@ -3533,34 +4635,13 @@ function renderDiscovery(data) {
     document.getElementById(
         "discoverySummary"
     ).innerHTML =
-        `
-        Network:
-        <strong>${esc(data.network)}</strong>
-        &nbsp; · &nbsp;
+        discoverySummaryHtml(
+            data
+        );
 
-        Checked:
-        <strong>${data.hosts_scanned}</strong>
-        &nbsp; · &nbsp;
-
-        Found ASIC:
-        <strong>${data.total}</strong>
-        &nbsp; · &nbsp;
-
-        Managed:
-        <strong>${data.managed_count}</strong>
-        &nbsp; · &nbsp;
-
-        New:
-        <strong>${data.new_known}</strong>
-        &nbsp; · &nbsp;
-
-        Unknown:
-        <strong>${data.new_unknown}</strong>
-        &nbsp; · &nbsp;
-
-        Time:
-        <strong>${data.duration_seconds}s</strong>
-        `;
+    renderDiscoveryNetworkResults(
+        data
+    );
 
 
     let html = "";
@@ -3634,6 +4715,18 @@ function renderDiscovery(data) {
                     <strong>
                         ${esc(d.ip)}
                     </strong>
+
+                    <div
+                        class="muted small"
+                        style="margin-top:3px"
+                    >
+                        ${esc(
+                            discoveryDeviceSource(
+                                d,
+                                data
+                            )
+                        )}
+                    </div>
                 </td>
 
                 <td>
@@ -3894,12 +4987,35 @@ async function addDiscoveryIPs(
     await loadStatus();
     await loadLogs();
 
-    await scanNetwork();
+    if (
+        lastDiscovery
+        &&
+        lastDiscovery.mode
+        === "saved_profiles"
+    ) {
+
+        await scanDiscoveryProfiles(
+            window.__lastDiscoveryProfileIds
+        );
+
+    }
+    else {
+
+        await scanNetwork();
+    }
 }
 
 
 
 
+
+
+window.addEventListener(
+    "load",
+    function() {
+        loadDiscoveryProfiles();
+    }
+);
 
 
 let issuesOpen = false;

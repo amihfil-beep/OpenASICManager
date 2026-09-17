@@ -54,6 +54,33 @@ class DashboardTemplateTests(unittest.TestCase):
                     content,
                 )
 
+    def test_dashboard_contains_issue_acknowledgement_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "Acknowledgement",
+            "ACKNOWLEDGED",
+            "UNACKNOWLEDGED",
+            "ACKNOWLEDGE",
+            "CLEAR ACK",
+            "issueAcknowledgementHTML",
+            "issueActionHTML",
+            "acknowledgeIssue",
+            "unacknowledgeIssue",
+            "issueAcknowledgementRequest",
+            "/api/issues/${issueId}/acknowledgement",
+            "acknowledgement_note",
+            "acknowledged_by",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_history_charts_use_bucket_metadata_and_show_gaps(self):
         content = dashboard_html()
 

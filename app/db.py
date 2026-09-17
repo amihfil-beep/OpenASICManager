@@ -308,6 +308,10 @@ def init_db():
         last_seen INTEGER NOT NULL,
         resolved_at INTEGER,
 
+        acknowledged_at INTEGER,
+        acknowledged_by TEXT,
+        acknowledgement_note TEXT,
+
         message TEXT
     );
 
@@ -317,6 +321,31 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_issues_miner
     ON issues(miner_id, id DESC);
     """)
+
+    issue_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(issues)"
+        ).fetchall()
+    }
+
+    if "acknowledged_at" not in issue_columns:
+        conn.execute("""
+            ALTER TABLE issues
+            ADD COLUMN acknowledged_at INTEGER
+        """)
+
+    if "acknowledged_by" not in issue_columns:
+        conn.execute("""
+            ALTER TABLE issues
+            ADD COLUMN acknowledged_by TEXT
+        """)
+
+    if "acknowledgement_note" not in issue_columns:
+        conn.execute("""
+            ALTER TABLE issues
+            ADD COLUMN acknowledgement_note TEXT
+        """)
 
     conn.execute("""
         INSERT OR IGNORE INTO settings(

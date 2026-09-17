@@ -558,6 +558,36 @@ a:hover {
     font-weight: 700;
 }
 
+.issue-acknowledged {
+    color: #4fd38a;
+    font-weight: 800;
+}
+
+.issue-unacknowledged {
+    color: #f1c75b;
+    font-weight: 700;
+}
+
+.issue-ack-meta {
+    margin-top: 3px;
+    color: #9299a8;
+    font-size: 11px;
+}
+
+.issue-ack-note {
+    margin-top: 5px;
+    max-width: 340px;
+    white-space: normal;
+    color: #d7dbe3;
+    font-size: 12px;
+}
+
+.issue-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 .issue-section {
     margin-top: 18px;
 }
@@ -2718,7 +2748,9 @@ a:hover {
                         <th>IP</th>
                         <th>Issue</th>
                         <th>Since</th>
+                        <th>Acknowledgement</th>
                         <th>Details</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
 
@@ -2751,6 +2783,7 @@ a:hover {
                         <th>Issue</th>
                         <th>Started</th>
                         <th>Resolved</th>
+                        <th>Acknowledgement</th>
                         <th>Details</th>
                     </tr>
                 </thead>
@@ -5106,6 +5139,290 @@ function issuesBackdropClick(
 }
 
 
+function issueAcknowledgementHTML(
+    issue
+) {
+
+    if (!issue.acknowledged) {
+
+        return `
+            <span class="issue-unacknowledged">
+                UNACKNOWLEDGED
+            </span>
+        `;
+    }
+
+
+    const actor =
+        issue.acknowledged_by
+        || "—";
+
+
+    const timestamp =
+        issueTime(
+            issue.acknowledged_at
+        );
+
+
+    const note =
+        issue.acknowledgement_note
+        ? `
+            <div class="issue-ack-note">
+                ${esc(
+                    issue.acknowledgement_note
+                )}
+            </div>
+        `
+        : "";
+
+
+    return `
+        <div class="issue-acknowledged">
+            ACKNOWLEDGED
+        </div>
+
+        <div class="issue-ack-meta">
+            ${esc(actor)}
+            ·
+            ${esc(timestamp)}
+        </div>
+
+        ${note}
+    `;
+}
+
+
+function issueActionHTML(
+    issue
+) {
+
+    const issueId =
+        Number(issue.id);
+
+
+    if (
+        !Number.isInteger(issueId)
+        ||
+        issueId <= 0
+    ) {
+
+        return "—";
+    }
+
+
+    if (issue.acknowledged) {
+
+        return `
+            <div class="issue-actions">
+
+                <button
+                    class="secondary mini"
+                    onclick="
+                        unacknowledgeIssue(
+                            ${issueId}
+                        )
+                    "
+                >
+                    CLEAR ACK
+                </button>
+
+            </div>
+        `;
+    }
+
+
+    return `
+        <div class="issue-actions">
+
+            <button
+                class="start mini"
+                onclick="
+                    acknowledgeIssue(
+                        ${issueId}
+                    )
+                "
+            >
+                ACKNOWLEDGE
+            </button>
+
+        </div>
+    `;
+}
+
+
+async function issueAcknowledgementRequest(
+    issueId,
+    method,
+    payload=null
+) {
+
+    const options = {
+        method: method,
+        headers: {}
+    };
+
+
+    if (payload !== null) {
+
+        options.headers[
+            "Content-Type"
+        ] = "application/json";
+
+        options.body =
+            JSON.stringify(
+                payload
+            );
+    }
+
+
+    const response =
+        await fetch(
+            `/api/issues/${issueId}/acknowledgement`,
+            options
+        );
+
+
+    let data = {};
+
+    try {
+        data =
+            await response.json();
+    }
+    catch (error) {
+        data = {};
+    }
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            data.detail
+            || "Issue acknowledgement request failed"
+        );
+    }
+
+
+    return data;
+}
+
+
+async function acknowledgeIssue(
+    issueId
+) {
+
+    const note =
+        window.prompt(
+            "Optional acknowledgement note (max 500 characters):",
+            ""
+        );
+
+
+    if (note === null) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "issuesStatus"
+        );
+
+
+    if (note.length > 500) {
+
+        status.textContent =
+            "Acknowledgement note is too long (max 500 characters).";
+
+        return;
+    }
+
+
+    status.textContent =
+        "Saving acknowledgement...";
+
+
+    try {
+
+        await issueAcknowledgementRequest(
+            issueId,
+            "PUT",
+            {
+                note: note
+            }
+        );
+
+
+        await loadIssues();
+
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        status.textContent =
+            "Acknowledgement error: "
+            + error.message;
+    }
+}
+
+
+async function unacknowledgeIssue(
+    issueId
+) {
+
+    if (
+        !window.confirm(
+            "Clear acknowledgement for this issue?"
+        )
+    ) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "issuesStatus"
+        );
+
+
+    status.textContent =
+        "Clearing acknowledgement...";
+
+
+    try {
+
+        await issueAcknowledgementRequest(
+            issueId,
+            "DELETE"
+        );
+
+
+        await loadIssues();
+
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            loadLogs();
+        }
+
+    }
+    catch (error) {
+
+        status.textContent =
+            "Acknowledgement error: "
+            + error.message;
+    }
+}
+
+
 function renderIssues(
     data
 ) {
@@ -5183,7 +5500,7 @@ function renderIssues(
 
         activeBody.innerHTML = `
             <tr>
-                <td colspan="6">
+                <td colspan="8">
                     No active issues.
                 </td>
             </tr>
@@ -5244,8 +5561,20 @@ function renderIssues(
                     </td>
 
                     <td>
+                        ${issueAcknowledgementHTML(
+                            issue
+                        )}
+                    </td>
+
+                    <td>
                         ${esc(
                             issue.message
+                        )}
+                    </td>
+
+                    <td>
+                        ${issueActionHTML(
+                            issue
                         )}
                     </td>
 
@@ -5271,7 +5600,7 @@ function renderIssues(
 
         resolvedBody.innerHTML = `
             <tr>
-                <td colspan="6">
+                <td colspan="7">
                     No resolved issues recorded.
                 </td>
             </tr>
@@ -5325,6 +5654,12 @@ function renderIssues(
                             issueTime(
                                 issue.resolved_at
                             )
+                        )}
+                    </td>
+
+                    <td>
+                        ${issueAcknowledgementHTML(
+                            issue
                         )}
                     </td>
 

@@ -4,12 +4,41 @@ All notable changes to OpenASICManager will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-17
+
+Farm-observability and policy release focused on making a small real-world ASIC farm easier to observe, diagnose and configure from the dashboard while preserving the operational-safety foundation introduced in 0.3.0.
+
+### Added
+
+- Configurable global anomaly policy for scan interval, offline grace, overheat trigger/clear thresholds, overheat grace and scheduler-mismatch grace.
+- Anomaly-policy API and dashboard editor with server-side validation and persistent settings.
+- Bounded telemetry-history query model with server-side downsampling for 24-hour, 7-day, 30-day and 90-day ranges.
+- Range, bucket, expected-point and missing-point metadata for historical telemetry.
+- Richer miner and farm history charts that consume the bounded server-side history model.
+- Persistent saved discovery-network profiles with independent enabled/disabled state.
+- Multi-network ASIC discovery for one selected saved network or all enabled saved networks.
+- Per-network discovery status, duration and result counts.
+- Source-network metadata and deterministic IP deduplication for aggregated discovery results.
+- Dashboard management for saved discovery networks.
+
 ### Changed
 
-- Miner and farm history charts now expose range and bucket metadata,
-  preserve real zero readings, and break lines across missing telemetry.
-- History loading, empty-data and API-error states now clear stale charts
-  and report missing bucket counts with explicit local timestamps.
+- Miner and farm history charts now preserve measured zero readings and break lines across missing telemetry instead of presenting missing samples as real zero values.
+- History loading, empty-data and API-error states clear stale chart data and expose missing-bucket information with explicit local timestamps.
+- Anomaly scanning reads the current persisted policy dynamically, so policy changes do not require an application restart.
+- Discovery can now cover multiple saved RFC1918 networks while retaining the existing manual single-network scan flow.
+
+### Safety and compatibility
+
+- Default anomaly thresholds preserve the previous 0.3.0 behavior until an operator explicitly changes them.
+- Anomaly policy changes affect detection only and do not automatically control ASICs.
+- Historical APIs remain bounded for long time ranges and do not fabricate or interpolate missing telemetry measurements.
+- Discovery remains restricted to RFC1918 IPv4 networks and preserves the existing per-network host-count limit.
+- Saved discovery profiles reject invalid, public, oversized and overlapping CIDRs.
+- Multi-network discovery is bounded to a maximum of eight selected profiles and scans networks sequentially.
+- Discovery remains read-only until an operator explicitly imports a discovered ASIC.
+- Existing single-network discovery remains available.
+- Scheduler, control, maintenance, backup, doctor, transactional-upgrade and Remote Web behavior from 0.3.0 remain part of the supported public application.
 
 ## [0.3.0] - 2026-09-11
 

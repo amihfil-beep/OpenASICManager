@@ -13,21 +13,22 @@ OpenASICManager is a self-hosted web application for monitoring and controlling 
 The project was created as a lightweight alternative to heavyweight mining-management platforms where the main requirements are:
 
 - centralized ASIC monitoring;
+- saved multi-subnet ASIC discovery;
 - scheduled start and pause operations;
 - automatic firmware detection;
 - manual firmware/driver override;
-- telemetry and history;
+- bounded telemetry history and farm/miner charts;
 - reboot and manual controls;
-- anomaly detection;
+- configurable anomaly detection policies;
 - Telegram notifications;
 - audit logging;
 - optional secure access to the original ASIC web interface.
 
 ## Current release
 
-**0.3.0**
+**0.4.0**
 
-OpenASICManager 0.3.0 is an operational-safety release. It adds verified backup/restore tooling, read-only diagnostics, transactional public-release upgrades with automatic rollback, and automatic Remote ASIC Web nginx synchronization while keeping the main application process unprivileged.
+OpenASICManager 0.4.0 is a farm-observability and policy release. It adds configurable anomaly policies, bounded and downsampled miner/farm telemetry history, richer history charts, and persistent multi-subnet discovery profiles while retaining the operational-safety tooling introduced in 0.3.0.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -44,11 +45,15 @@ Other ASIC models or firmware may expose compatible APIs, but they have not yet 
 
 OpenASICManager can scan RFC1918 IPv4 networks and identify supported ASIC firmware automatically.
 
+The dashboard supports persistent saved discovery-network profiles. Multiple private CIDRs can be enabled or disabled independently and scanned individually or together. Aggregated results retain their source-network information and are deduplicated by IP.
+
+The original manual single-network discovery flow remains available.
+
 Example:
 
     ./scripts/asic-discover 192.168.1.0/24
 
-Discovery is limited to private IPv4 networks.
+Discovery is read-only until an operator explicitly imports a device and remains limited to RFC1918 IPv4 networks.
 
 ### Automatic firmware detection
 
@@ -132,6 +137,8 @@ Current anomaly logic includes conditions such as:
 - ASIC offline;
 - excessive temperature;
 - scheduler state mismatch.
+
+Global anomaly-policy settings can be changed from the dashboard for scan interval, offline grace, overheat trigger and clear thresholds, overheat grace, and scheduler-mismatch grace. The existing 0.3.0 thresholds remain the defaults until the operator changes them. Alert-policy configuration does not automatically start, stop or reboot ASICs.
 
 ### Telegram
 

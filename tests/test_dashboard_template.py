@@ -82,6 +82,35 @@ class DashboardTemplateTests(unittest.TestCase):
             missing_as_zero.search(content)
         )
 
+    def test_dashboard_contains_saved_discovery_profiles(self):
+        content = dashboard_html()
+
+        expected = (
+            "Saved Networks",
+            "Manual single-network scan",
+            "discoveryProfileRows",
+            "discoveryProfilesScanAllButton",
+            "discoveryNetworkResults",
+            "/api/discovery/profiles",
+            "/api/discovery/profiles/scan",
+            "/api/discovery/scan",
+            "loadDiscoveryProfiles",
+            "scanDiscoveryProfiles",
+            "createDiscoveryProfile",
+            "editDiscoveryProfile",
+            "toggleDiscoveryProfile",
+            "deleteDiscoveryProfile",
+            "discoveryDeviceSource",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
 
 
 if __name__ == "__main__":

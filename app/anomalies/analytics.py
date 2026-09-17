@@ -45,6 +45,23 @@ def issue_dict(row):
             if row["resolved_at"]
             else None
         ),
+        "acknowledged": bool(
+            row["acknowledged_at"]
+        ),
+        "acknowledged_at": (
+            datetime.fromtimestamp(
+                row["acknowledged_at"],
+                MOSCOW,
+            ).isoformat()
+            if row["acknowledged_at"]
+            else None
+        ),
+        "acknowledged_by": (
+            row["acknowledged_by"]
+        ),
+        "acknowledgement_note": (
+            row["acknowledgement_note"]
+        ),
         "message": row["message"],
     }
 

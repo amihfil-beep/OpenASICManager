@@ -320,6 +320,87 @@ def transition_anomaly_condition(
     return opened, resolved
 
 
+def set_issue_acknowledgement(
+    issue_id,
+    actor,
+    note,
+    now=None,
+):
+    if now is None:
+        now = int(time.time())
+
+    conn = db()
+
+    try:
+        cursor = conn.execute("""
+            UPDATE issues
+            SET
+                acknowledged_at=?,
+                acknowledged_by=?,
+                acknowledgement_note=?
+            WHERE id=?
+        """, (
+            int(now),
+            str(actor),
+            note,
+            int(issue_id),
+        ))
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return None
+
+        row = conn.execute("""
+            SELECT *
+            FROM issues
+            WHERE id=?
+        """, (
+            int(issue_id),
+        )).fetchone()
+
+        conn.commit()
+        return row
+
+    finally:
+        conn.close()
+
+
+def clear_issue_acknowledgement(
+    issue_id,
+):
+    conn = db()
+
+    try:
+        cursor = conn.execute("""
+            UPDATE issues
+            SET
+                acknowledged_at=NULL,
+                acknowledged_by=NULL,
+                acknowledgement_note=NULL
+            WHERE id=?
+        """, (
+            int(issue_id),
+        ))
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return None
+
+        row = conn.execute("""
+            SELECT *
+            FROM issues
+            WHERE id=?
+        """, (
+            int(issue_id),
+        )).fetchone()
+
+        conn.commit()
+        return row
+
+    finally:
+        conn.close()
+
+
 def issue_rows(limit=100):
     """Return active issues and the most recently resolved issues."""
     limit = max(1, int(limit))
@@ -354,5 +435,7 @@ __all__ = (
     "active_issue_exists",
     "anomaly_scan_snapshot",
     "transition_anomaly_condition",
+    "set_issue_acknowledgement",
+    "clear_issue_acknowledgement",
     "issue_rows",
 )

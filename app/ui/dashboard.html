@@ -593,6 +593,126 @@ a:hover {
 }
 
 
+
+/* ==========================================================
+   v0.5.0 Maintenance Windows
+   ========================================================== */
+
+.maintenance-button-active {
+    background: #8f6b28 !important;
+    color: white !important;
+}
+
+.maintenance-badge {
+    display: inline-block;
+    padding: 4px 7px;
+    border-radius: 6px;
+
+    background:
+        rgba(241,199,91,.14);
+
+    color: #f1c75b;
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.maintenance-badge-detail {
+    display: block;
+    margin-top: 2px;
+
+    color: #aeb4c0;
+
+    font-size: 10px;
+    font-weight: 500;
+}
+
+.maintenance-status-active {
+    color: #f1c75b;
+    font-weight: 800;
+}
+
+.maintenance-status-scheduled {
+    color: #67b7ff;
+    font-weight: 700;
+}
+
+.maintenance-status-ended,
+.maintenance-status-expired {
+    color: #9299a8;
+}
+
+.maintenance-form {
+    margin-bottom: 18px;
+    padding: 14px;
+
+    background: #111318;
+
+    border: 1px solid #2b303b;
+    border-radius: 9px;
+}
+
+.maintenance-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0,1fr));
+
+    gap: 12px;
+}
+
+.maintenance-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.maintenance-field.full {
+    grid-column: 1 / -1;
+}
+
+.maintenance-field label {
+    color: #9299a8;
+    font-size: 12px;
+}
+
+.maintenance-field input,
+.maintenance-field select {
+    box-sizing: border-box;
+    width: 100%;
+
+    padding: 8px 10px;
+
+    color: #e7e9ee;
+    background: #111318;
+
+    border: 1px solid #343b48;
+    border-radius: 7px;
+}
+
+.maintenance-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.maintenance-note-cell {
+    max-width: 300px;
+    white-space: normal;
+}
+
+@media (max-width:700px) {
+
+    .maintenance-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .maintenance-field.full {
+        grid-column: auto;
+    }
+}
+
+
 .reboot-button {
     background: #a45c24 !important;
     color: white !important;
@@ -1490,6 +1610,16 @@ a:hover {
 
 
     <button
+        id="maintenanceButton"
+        class="secondary"
+        onclick="openMaintenance()"
+        title="Planned maintenance windows"
+    >
+        MAINTENANCE 0
+    </button>
+
+
+    <button
         id="issuesButton"
         class="secondary"
         onclick="openIssues()"
@@ -2049,6 +2179,10 @@ a:hover {
 
     <th>
         Override
+    </th>
+
+    <th>
+        Maintenance
     </th>
 
     <th>
@@ -2679,6 +2813,211 @@ a:hover {
         >
             SAVE
         </button>
+
+    </div>
+
+</div>
+
+</div>
+
+
+<div
+    id="maintenanceBackdrop"
+    class="modal-backdrop"
+    onclick="maintenanceBackdropClick(event)"
+>
+
+<div
+    class="history-modal"
+    onclick="event.stopPropagation()"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2 style="margin:0">
+                Maintenance Windows
+            </h2>
+
+            <div class="muted">
+                Planned, time-bounded anomaly suppression.
+                Telemetry and ASIC control remain independent.
+            </div>
+
+        </div>
+
+        <button
+            class="close-button"
+            onclick="closeMaintenance()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div class="maintenance-form">
+
+        <div class="chart-title">
+            Create maintenance window
+        </div>
+
+        <div
+            class="muted small"
+            style="margin-bottom:12px"
+        >
+            Maximum duration: 7 days.
+            Times use the browser local timezone.
+        </div>
+
+
+        <div class="maintenance-grid">
+
+            <div class="maintenance-field">
+
+                <label for="maintenanceScope">
+                    Scope
+                </label>
+
+                <select
+                    id="maintenanceScope"
+                    onchange="maintenanceScopeChanged()"
+                >
+                    <option value="FARM">
+                        Entire farm
+                    </option>
+
+                    <option value="MINER">
+                        Single ASIC
+                    </option>
+                </select>
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="maintenanceMiner">
+                    ASIC
+                </label>
+
+                <select
+                    id="maintenanceMiner"
+                    disabled
+                >
+                </select>
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="maintenanceStartsAt">
+                    Starts at
+                </label>
+
+                <input
+                    id="maintenanceStartsAt"
+                    type="datetime-local"
+                    step="60"
+                >
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="maintenanceEndsAt">
+                    Ends at
+                </label>
+
+                <input
+                    id="maintenanceEndsAt"
+                    type="datetime-local"
+                    step="60"
+                >
+
+            </div>
+
+
+            <div class="maintenance-field full">
+
+                <label for="maintenanceNote">
+                    Operator note
+                </label>
+
+                <input
+                    id="maintenanceNote"
+                    type="text"
+                    maxlength="500"
+                    placeholder="For example: power maintenance"
+                >
+
+            </div>
+
+        </div>
+
+
+        <div
+            style="
+                margin-top:14px;
+                display:flex;
+                gap:8px;
+            "
+        >
+
+            <button
+                class="start"
+                onclick="createMaintenanceWindow()"
+            >
+                CREATE WINDOW
+            </button>
+
+            <button
+                class="secondary"
+                onclick="loadMaintenance(true)"
+            >
+                REFRESH
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="maintenanceStatus"
+        class="history-status"
+    >
+        Loading...
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table style="min-width:1080px">
+
+            <thead>
+
+                <tr>
+                    <th>Status</th>
+                    <th>Scope</th>
+                    <th>Target</th>
+                    <th>Starts</th>
+                    <th>Ends</th>
+                    <th>Operator</th>
+                    <th>Note</th>
+                    <th>Actions</th>
+                </tr>
+
+            </thead>
+
+
+            <tbody id="maintenanceRows">
+            </tbody>
+
+        </table>
 
     </div>
 
@@ -5047,6 +5386,823 @@ window.addEventListener(
     "load",
     function() {
         loadDiscoveryProfiles();
+    }
+);
+
+
+
+// ============================================================
+// MAINTENANCE WINDOWS
+// ============================================================
+
+let maintenanceOpen = false;
+
+window.__maintenanceState = {
+    active: [],
+    scheduled: [],
+    recent: [],
+};
+
+
+function maintenanceTime(value) {
+
+    if (!value) {
+        return "—";
+    }
+
+    return new Date(
+        Number(value) * 1000
+    ).toLocaleString();
+}
+
+
+function maintenanceInputValue(date) {
+
+    const adjusted =
+        new Date(
+            date.getTime()
+            -
+            date.getTimezoneOffset() * 60000
+        );
+
+    return adjusted
+        .toISOString()
+        .slice(0, 16);
+}
+
+
+function setMaintenanceDefaultTimes() {
+
+    const start =
+        new Date(
+            Date.now()
+            + 60 * 1000
+        );
+
+    const end =
+        new Date(
+            start.getTime()
+            + 60 * 60 * 1000
+        );
+
+    document.getElementById(
+        "maintenanceStartsAt"
+    ).value =
+        maintenanceInputValue(start);
+
+    document.getElementById(
+        "maintenanceEndsAt"
+    ).value =
+        maintenanceInputValue(end);
+}
+
+
+function maintenancePopulateMiners() {
+
+    const select =
+        document.getElementById(
+            "maintenanceMiner"
+        );
+
+    const miners =
+        (
+            window.__asicLastStatus
+            &&
+            Array.isArray(
+                window.__asicLastStatus.miners
+            )
+        )
+        ? window.__asicLastStatus.miners
+        : [];
+
+    select.innerHTML =
+        Array.from(miners)
+        .sort(
+            (a, b) =>
+                String(
+                    a.name || a.ip || ""
+                ).localeCompare(
+                    String(
+                        b.name || b.ip || ""
+                    )
+                )
+        )
+        .map(
+            miner => `
+                <option value="${Number(miner.id)}">
+                    ${esc(
+                        miner.name
+                        || miner.ip
+                        || ("ASIC #" + miner.id)
+                    )}
+                    ·
+                    ${esc(miner.ip || "")}
+                </option>
+            `
+        )
+        .join("");
+}
+
+
+function maintenanceScopeChanged() {
+
+    const scope =
+        document.getElementById(
+            "maintenanceScope"
+        ).value;
+
+    document.getElementById(
+        "maintenanceMiner"
+    ).disabled =
+        scope !== "MINER";
+}
+
+
+function maintenanceWindowsForMiner(
+    minerId
+) {
+
+    const active =
+        Array.isArray(
+            window.__maintenanceState.active
+        )
+        ? window.__maintenanceState.active
+        : [];
+
+    return active.filter(
+        item =>
+            item.scope === "FARM"
+            ||
+            (
+                item.scope === "MINER"
+                &&
+                Number(item.miner_id)
+                === Number(minerId)
+            )
+    );
+}
+
+
+function maintenanceBadgeHTML(
+    minerId
+) {
+
+    const windows =
+        maintenanceWindowsForMiner(
+            minerId
+        );
+
+    if (!windows.length) {
+        return "—";
+    }
+
+    return windows.map(
+        item => `
+            <span class="maintenance-badge">
+
+                ${
+                    item.scope === "FARM"
+                    ? "FARM MAINT"
+                    : "MAINT"
+                }
+
+                <span class="maintenance-badge-detail">
+                    until
+                    ${esc(
+                        maintenanceTime(
+                            item.ends_at
+                        )
+                    )}
+                </span>
+
+            </span>
+        `
+    ).join("<br>");
+}
+
+
+function maintenanceStatusClass(
+    value
+) {
+
+    return (
+        "maintenance-status-"
+        +
+        String(
+            value || ""
+        ).toLowerCase()
+    );
+}
+
+
+function maintenanceActionHTML(
+    item
+) {
+
+    if (
+        item.status !== "ACTIVE"
+        &&
+        item.status !== "SCHEDULED"
+    ) {
+        return "—";
+    }
+
+    return `
+        <div class="maintenance-actions">
+
+            <button
+                class="secondary mini"
+                onclick="
+                    extendMaintenanceWindow(
+                        ${Number(item.id)},
+                        ${Number(item.ends_at)}
+                    )
+                "
+            >
+                EXTEND
+            </button>
+
+            <button
+                class="warning-button mini"
+                onclick="
+                    endMaintenanceWindow(
+                        ${Number(item.id)},
+                        '${esc(item.status)}'
+                    )
+                "
+            >
+                ${
+                    item.status === "SCHEDULED"
+                    ? "CANCEL"
+                    : "END"
+                }
+            </button>
+
+        </div>
+    `;
+}
+
+
+function renderMaintenance(data) {
+
+    window.__maintenanceState =
+        data;
+
+    const active =
+        Array.isArray(data.active)
+        ? data.active
+        : [];
+
+    const scheduled =
+        Array.isArray(data.scheduled)
+        ? data.scheduled
+        : [];
+
+    const recent =
+        Array.isArray(data.recent)
+        ? data.recent
+        : [];
+
+    const button =
+        document.getElementById(
+            "maintenanceButton"
+        );
+
+    if (button) {
+
+        button.textContent =
+            "MAINTENANCE "
+            + active.length;
+
+        button.title =
+            active.length
+            + " active · "
+            + scheduled.length
+            + " scheduled";
+
+        button.classList.toggle(
+            "maintenance-button-active",
+            active.length > 0
+        );
+    }
+
+    if (!maintenanceOpen) {
+        return;
+    }
+
+    document.getElementById(
+        "maintenanceStatus"
+    ).textContent =
+        active.length
+        + " active · "
+        + scheduled.length
+        + " scheduled";
+
+    const rows = [
+        ...active,
+        ...scheduled,
+        ...recent.slice(0, 25),
+    ];
+
+    if (!rows.length) {
+
+        document.getElementById(
+            "maintenanceRows"
+        ).innerHTML = `
+            <tr>
+                <td colspan="8">
+                    No maintenance windows recorded.
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+    document.getElementById(
+        "maintenanceRows"
+    ).innerHTML =
+        rows.map(
+            item => {
+
+                const target =
+                    item.scope === "FARM"
+                    ? "Entire farm"
+                    : (
+                        item.miner_name
+                        || item.miner_ip
+                        || ("ASIC #" + item.miner_id)
+                    );
+
+                return `
+                    <tr>
+
+                        <td
+                            class="${
+                                maintenanceStatusClass(
+                                    item.status
+                                )
+                            }"
+                        >
+                            ${esc(item.status)}
+                        </td>
+
+                        <td>
+                            ${esc(item.scope)}
+                        </td>
+
+                        <td>
+                            ${esc(target)}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                maintenanceTime(
+                                    item.starts_at
+                                )
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                maintenanceTime(
+                                    item.ends_at
+                                )
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                item.created_by
+                                || "—"
+                            )}
+                        </td>
+
+                        <td class="maintenance-note-cell">
+                            ${esc(
+                                item.note
+                                || "—"
+                            )}
+                        </td>
+
+                        <td>
+                            ${maintenanceActionHTML(item)}
+                        </td>
+
+                    </tr>
+                `;
+            }
+        ).join("");
+}
+
+
+async function loadMaintenance(
+    rerenderMiners=false
+) {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/maintenance?limit=100"
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.detail
+                || "Maintenance request failed"
+            );
+        }
+
+        renderMaintenance(data);
+
+        if (
+            rerenderMiners
+            &&
+            window.__asicLastStatus
+        ) {
+            await loadStatus();
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(error);
+
+        if (maintenanceOpen) {
+
+            document.getElementById(
+                "maintenanceStatus"
+            ).textContent =
+                "Maintenance error: "
+                + error.message;
+        }
+    }
+}
+
+
+async function maintenanceRequest(
+    url,
+    options
+) {
+
+    const response =
+        await fetch(
+            url,
+            options
+        );
+
+    let data = {};
+
+    try {
+        data =
+            await response.json();
+    }
+    catch (_) {
+        data = {};
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data.detail
+            || "Maintenance operation failed"
+        );
+    }
+
+    return data;
+}
+
+
+function openMaintenance() {
+
+    maintenanceOpen = true;
+
+    maintenancePopulateMiners();
+    setMaintenanceDefaultTimes();
+    maintenanceScopeChanged();
+
+    document.getElementById(
+        "maintenanceBackdrop"
+    ).classList.add(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+
+    loadMaintenance();
+}
+
+
+function closeMaintenance() {
+
+    maintenanceOpen = false;
+
+    document.getElementById(
+        "maintenanceBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function maintenanceBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        === "maintenanceBackdrop"
+    ) {
+        closeMaintenance();
+    }
+}
+
+
+async function createMaintenanceWindow() {
+
+    const status =
+        document.getElementById(
+            "maintenanceStatus"
+        );
+
+    const scope =
+        document.getElementById(
+            "maintenanceScope"
+        ).value;
+
+    const startsValue =
+        document.getElementById(
+            "maintenanceStartsAt"
+        ).value;
+
+    const endsValue =
+        document.getElementById(
+            "maintenanceEndsAt"
+        ).value;
+
+    const startsAt =
+        Math.floor(
+            new Date(startsValue)
+            .getTime()
+            / 1000
+        );
+
+    const endsAt =
+        Math.floor(
+            new Date(endsValue)
+            .getTime()
+            / 1000
+        );
+
+    if (
+        !Number.isFinite(startsAt)
+        ||
+        !Number.isFinite(endsAt)
+    ) {
+        status.textContent =
+            "Valid start and end times are required.";
+        return;
+    }
+
+    const payload = {
+        scope: scope,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        note:
+            document.getElementById(
+                "maintenanceNote"
+            ).value,
+    };
+
+    if (scope === "MINER") {
+
+        const minerId =
+            Number(
+                document.getElementById(
+                    "maintenanceMiner"
+                ).value
+            );
+
+        if (
+            !Number.isInteger(minerId)
+            ||
+            minerId <= 0
+        ) {
+            status.textContent =
+                "Select an ASIC.";
+            return;
+        }
+
+        payload.miner_id =
+            minerId;
+    }
+
+    status.textContent =
+        "Creating maintenance window...";
+
+    try {
+
+        await maintenanceRequest(
+            "/api/maintenance",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type":
+                        "application/json",
+                },
+                body:
+                    JSON.stringify(payload),
+            }
+        );
+
+        document.getElementById(
+            "maintenanceNote"
+        ).value =
+            "";
+
+        setMaintenanceDefaultTimes();
+
+        await loadMaintenance(true);
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            await loadLogs();
+        }
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            "Maintenance error: "
+            + error.message;
+    }
+}
+
+
+async function extendMaintenanceWindow(
+    windowId,
+    currentEndsAt
+) {
+
+    const value =
+        window.prompt(
+            "Extend maintenance by how many minutes?",
+            "60"
+        );
+
+    if (value === null) {
+        return;
+    }
+
+    const minutes =
+        Number(value);
+
+    if (
+        !Number.isFinite(minutes)
+        ||
+        minutes <= 0
+    ) {
+        document.getElementById(
+            "maintenanceStatus"
+        ).textContent =
+            "Extension must be a positive number of minutes.";
+        return;
+    }
+
+    try {
+
+        await maintenanceRequest(
+            `/api/maintenance/${windowId}`,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type":
+                        "application/json",
+                },
+                body:
+                    JSON.stringify({
+                        ends_at:
+                            Number(currentEndsAt)
+                            +
+                            Math.round(
+                                minutes * 60
+                            ),
+                    }),
+            }
+        );
+
+        await loadMaintenance(true);
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            await loadLogs();
+        }
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "maintenanceStatus"
+        ).textContent =
+            "Maintenance error: "
+            + error.message;
+    }
+}
+
+
+async function endMaintenanceWindow(
+    windowId,
+    statusValue
+) {
+
+    const verb =
+        statusValue === "SCHEDULED"
+        ? "CANCEL"
+        : "END";
+
+    if (
+        !window.confirm(
+            verb
+            + " maintenance window #"
+            + windowId
+            + "?"
+        )
+    ) {
+        return;
+    }
+
+    try {
+
+        await maintenanceRequest(
+            `/api/maintenance/${windowId}/end`,
+            {
+                method: "POST",
+            }
+        );
+
+        await loadMaintenance(true);
+
+        if (
+            typeof loadLogs
+            === "function"
+        ) {
+            await loadLogs();
+        }
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "maintenanceStatus"
+        ).textContent =
+            "Maintenance error: "
+            + error.message;
+    }
+}
+
+
+window.addEventListener(
+    "load",
+    function() {
+
+        loadMaintenance(true);
+
+        window.setInterval(
+            function() {
+                loadMaintenance(true);
+            },
+            15000
+        );
+    }
+);
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            maintenanceOpen
+        ) {
+            closeMaintenance();
+        }
     }
 );
 
@@ -10397,6 +11553,13 @@ async function loadStatus() {
 
                 <td class="small">
                     ${override}
+                </td>
+
+
+                <td>
+                    ${maintenanceBadgeHTML(
+                        m.id
+                    )}
                 </td>
 
 

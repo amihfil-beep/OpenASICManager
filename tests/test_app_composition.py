@@ -63,6 +63,7 @@ class AppCompositionTests(unittest.TestCase):
             "create_telemetry_router",
             "create_operations_router",
             "create_issue_router",
+            "create_maintenance_router",
             "create_discovery_router",
             "create_discovery_profiles_router",
             "create_inventory_router",

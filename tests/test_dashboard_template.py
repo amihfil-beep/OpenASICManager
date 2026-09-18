@@ -81,6 +81,40 @@ class DashboardTemplateTests(unittest.TestCase):
                 )
 
 
+    def test_dashboard_contains_maintenance_window_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "MAINTENANCE 0",
+            "maintenanceBackdrop",
+            "maintenanceScope",
+            "maintenanceMiner",
+            "maintenanceStartsAt",
+            "maintenanceEndsAt",
+            "maintenanceNote",
+            "maintenanceRows",
+            "maintenanceBadgeHTML",
+            "maintenanceWindowsForMiner",
+            "openMaintenance",
+            "loadMaintenance",
+            "createMaintenanceWindow",
+            "extendMaintenanceWindow",
+            "endMaintenanceWindow",
+            "/api/maintenance?limit=100",
+            "/api/maintenance/${windowId}",
+            "/api/maintenance/${windowId}/end",
+            "Maximum duration: 7 days",
+            "Telemetry and ASIC control remain independent",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_history_charts_use_bucket_metadata_and_show_gaps(self):
         content = dashboard_html()
 

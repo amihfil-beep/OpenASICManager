@@ -5,6 +5,10 @@ from datetime import datetime
 
 from scheduler.policy import MOSCOW
 
+from maintenance_windows.repository import (
+    active_maintenance_snapshot,
+)
+
 from anomalies.policy import (
     normalize_temperature,
     offline_observed,
@@ -42,6 +46,7 @@ def set_anomaly_condition(
     observed,
     grace_seconds,
     message,
+    suppress_new=False,
 ):
     opened, resolved = transition_anomaly_condition(
         miner=miner,
@@ -50,6 +55,7 @@ def set_anomaly_condition(
         observed=observed,
         grace_seconds=grace_seconds,
         message=message,
+        suppress_new=suppress_new,
     )
 
     if opened:
@@ -95,11 +101,24 @@ def anomaly_scan(
         anomaly_scan_snapshot()
     )
 
+    maintenance = (
+        active_maintenance_snapshot(
+            now
+        )
+    )
+
     desired = anomaly_desired_state(
         runtime
     )
 
     for miner in miners:
+        maintenance_active = (
+            maintenance["farm_active"]
+            or
+            miner["id"]
+            in maintenance["miner_ids"]
+        )
+
         enabled = bool(
             miner["enabled"]
         )
@@ -118,6 +137,7 @@ def anomaly_scan(
                     observed=False,
                     grace_seconds=0,
                     message="ASIC disabled",
+                    suppress_new=maintenance_active,
                 )
             continue
 
@@ -147,6 +167,7 @@ def anomaly_scan(
                 if offline
                 else f"ASIC reachable; state={state}"
             ),
+            suppress_new=maintenance_active,
         )
 
         temp_value = normalize_temperature(
@@ -189,6 +210,7 @@ def anomaly_scan(
                 if temp_value is not None
                 else "Temperature unavailable"
             ),
+            suppress_new=maintenance_active,
         )
 
         override_active = bool(
@@ -226,6 +248,7 @@ def anomaly_scan(
                 if applicable
                 else "Schedule condition not applicable"
             ),
+            suppress_new=maintenance_active,
         )
 
 

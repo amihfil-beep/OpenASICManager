@@ -167,6 +167,7 @@ def transition_anomaly_condition(
     grace_seconds,
     message,
     now=None,
+    suppress_new=False,
 ):
     if now is None:
         now = int(time.time())
@@ -216,6 +217,17 @@ def transition_anomaly_condition(
                 severity,
                 active["id"],
             ))
+        elif suppress_new:
+            conn.execute("""
+                DELETE FROM anomaly_candidates
+                WHERE
+                    miner_id=?
+                    AND code=?
+            """, (
+                miner["id"],
+                code,
+            ))
+
         else:
             if not candidate:
                 conn.execute("""

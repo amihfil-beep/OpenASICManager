@@ -320,6 +320,59 @@ def init_db():
 
     CREATE INDEX IF NOT EXISTS idx_issues_miner
     ON issues(miner_id, id DESC);
+
+    CREATE TABLE IF NOT EXISTS maintenance_windows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        scope TEXT NOT NULL,
+        miner_id INTEGER,
+
+        starts_at INTEGER NOT NULL,
+        ends_at INTEGER NOT NULL,
+
+        note TEXT,
+
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+
+        updated_by TEXT,
+        updated_at INTEGER,
+
+        ended_at INTEGER,
+        ended_by TEXT,
+
+        CHECK (
+            scope IN (
+                'FARM',
+                'MINER'
+            )
+        ),
+
+        CHECK (
+            (
+                scope='FARM'
+                AND miner_id IS NULL
+            )
+            OR
+            (
+                scope='MINER'
+                AND miner_id IS NOT NULL
+            )
+        )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_maintenance_time
+    ON maintenance_windows(
+        starts_at,
+        ends_at
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_maintenance_miner
+    ON maintenance_windows(
+        miner_id,
+        starts_at,
+        ends_at
+    );
     """)
 
     issue_columns = {

@@ -115,6 +115,44 @@ class DashboardTemplateTests(unittest.TestCase):
                 )
 
 
+    def test_dashboard_contains_per_miner_anomaly_policy_editor(self):
+        content = dashboard_html()
+
+        expected = (
+            "Alert policy",
+            "minerAnomalyPolicyBackdrop",
+            "minerAnomalyPolicyTitle",
+            "minerAnomalyPolicyRows",
+            "minerAnomalyPolicyInterval",
+            "minerAnomalyPolicyStatus",
+            "MINER_ANOMALY_POLICY_FIELDS",
+            "minerAnomalyPolicyButtonHTML",
+            "loadMinerAnomalyPolicySummary",
+            "/api/anomaly-policy-overrides",
+            "openMinerAnomalyPolicy",
+            "renderMinerAnomalyPolicy",
+            "minerAnomalyPolicyPayload",
+            "saveMinerAnomalyPolicy",
+            "clearMinerAnomalyPolicy",
+            "GLOBAL ONLY",
+            "OVERRIDE",
+            "INHERIT ALL",
+            "/api/miners/",
+            "/anomaly-policy",
+            "effective_policy",
+            "global_policy",
+            "overrides",
+            "sources",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_history_charts_use_bucket_metadata_and_show_gaps(self):
         content = dashboard_html()
 

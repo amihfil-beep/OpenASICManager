@@ -13,11 +13,13 @@ from anomalies.policy import (
     normalize_temperature,
     offline_observed,
     overheat_observed,
+    resolve_anomaly_policy,
     schedule_applicable,
 )
 from anomalies.repository import (
     active_issue_exists,
     anomaly_scan_snapshot,
+    load_anomaly_override_snapshot,
     load_anomaly_policy,
     transition_anomaly_condition,
 )
@@ -97,6 +99,12 @@ def anomaly_scan(
     if anomaly_policy is None:
         anomaly_policy = load_anomaly_policy()
 
+    override_snapshot = (
+        load_anomaly_override_snapshot(
+            anomaly_policy
+        )
+    )
+
     scheduler_enabled, miners = (
         anomaly_scan_snapshot()
     )
@@ -112,6 +120,16 @@ def anomaly_scan(
     )
 
     for miner in miners:
+        effective_policy = (
+            resolve_anomaly_policy(
+                anomaly_policy,
+                override_snapshot.get(
+                    int(miner["id"]),
+                    {},
+                ),
+            )
+        )
+
         maintenance_active = (
             maintenance["farm_active"]
             or
@@ -158,7 +176,7 @@ def anomaly_scan(
             severity="CRITICAL",
             observed=offline,
             grace_seconds=(
-                anomaly_policy[
+                effective_policy[
                     "offline_grace_seconds"
                 ]
             ),
@@ -183,12 +201,12 @@ def anomaly_scan(
             temp_value,
             hot_active,
             hot_temp_c=(
-                anomaly_policy[
+                effective_policy[
                     "hot_temp_c"
                 ]
             ),
             hot_clear_c=(
-                anomaly_policy[
+                effective_policy[
                     "hot_clear_c"
                 ]
             ),
@@ -201,7 +219,7 @@ def anomaly_scan(
             severity="CRITICAL",
             observed=hot,
             grace_seconds=(
-                anomaly_policy[
+                effective_policy[
                     "hot_grace_seconds"
                 ]
             ),
@@ -239,7 +257,7 @@ def anomaly_scan(
             severity="WARNING",
             observed=mismatch,
             grace_seconds=(
-                anomaly_policy[
+                effective_policy[
                     "schedule_grace_seconds"
                 ]
             ),

@@ -5,7 +5,10 @@ import time
 from anomalies.policy import (
     ANOMALY_POLICY_FIELDS,
     DEFAULT_ANOMALY_POLICY,
+    MINER_ANOMALY_OVERRIDE_FIELDS,
+    normalize_anomaly_overrides,
     normalize_anomaly_policy,
+    resolve_anomaly_policy,
 )
 from db import db
 
@@ -82,6 +85,314 @@ def save_anomaly_policy(policy):
         conn.close()
 
     return normalized
+
+
+def _override_values_from_row(row):
+    if row is None:
+        return {}
+
+    return {
+        field: row[field]
+        for field
+        in MINER_ANOMALY_OVERRIDE_FIELDS
+        if row[field] is not None
+    }
+
+
+def load_miner_anomaly_overrides(
+    miner_id,
+    global_policy=None,
+):
+    if global_policy is None:
+        global_policy = (
+            load_anomaly_policy()
+        )
+
+    conn = db()
+
+    try:
+        row = conn.execute("""
+            SELECT *
+            FROM anomaly_policy_overrides
+            WHERE miner_id=?
+        """, (
+            int(miner_id),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+    raw = _override_values_from_row(
+        row
+    )
+
+    try:
+        overrides = (
+            normalize_anomaly_overrides(
+                raw
+            )
+        )
+
+        # Validate the resulting effective policy too.
+        resolve_anomaly_policy(
+            global_policy,
+            overrides,
+        )
+
+        return overrides
+
+    except ValueError:
+        # Only manual DB corruption should reach here.
+        # Keep anomaly detection operational by
+        # falling back to global inheritance.
+        return {}
+
+
+def load_anomaly_override_snapshot(
+    global_policy=None,
+):
+    if global_policy is None:
+        global_policy = (
+            load_anomaly_policy()
+        )
+
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT *
+            FROM anomaly_policy_overrides
+        """).fetchall()
+
+    finally:
+        conn.close()
+
+    result = {}
+
+    for row in rows:
+
+        raw = _override_values_from_row(
+            row
+        )
+
+        try:
+            overrides = (
+                normalize_anomaly_overrides(
+                    raw
+                )
+            )
+
+            resolve_anomaly_policy(
+                global_policy,
+                overrides,
+            )
+
+        except ValueError:
+            continue
+
+        if overrides:
+            result[
+                int(row["miner_id"])
+            ] = overrides
+
+    return result
+
+
+def validate_global_policy_against_overrides(
+    global_policy,
+):
+    normalized_global = (
+        normalize_anomaly_policy(
+            global_policy
+        )
+    )
+
+    current_global = (
+        load_anomaly_policy()
+    )
+
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT *
+            FROM anomaly_policy_overrides
+        """).fetchall()
+
+    finally:
+        conn.close()
+
+    for row in rows:
+
+        raw = _override_values_from_row(
+            row
+        )
+
+        try:
+            overrides = (
+                normalize_anomaly_overrides(
+                    raw
+                )
+            )
+        except ValueError:
+            # A manually corrupted row is already
+            # ignored by normal policy resolution.
+            continue
+
+        try:
+            resolve_anomaly_policy(
+                current_global,
+                overrides,
+            )
+        except ValueError:
+            # Likewise, do not let a row that is
+            # already invalid due to manual DB
+            # manipulation block global recovery.
+            continue
+
+        try:
+            resolve_anomaly_policy(
+                normalized_global,
+                overrides,
+            )
+
+        except ValueError as exc:
+            raise ValueError(
+                "Global anomaly policy conflicts "
+                "with overrides for miner "
+                f"{int(row['miner_id'])}: {exc}"
+            )
+
+    return normalized_global
+
+
+def save_miner_anomaly_overrides(
+    miner_id,
+    overrides,
+    actor,
+    now=None,
+):
+    if now is None:
+        now = int(time.time())
+
+    global_policy = (
+        load_anomaly_policy()
+    )
+
+    normalized = (
+        normalize_anomaly_overrides(
+            overrides
+        )
+    )
+
+    # Validate inherited + overridden values together.
+    resolve_anomaly_policy(
+        global_policy,
+        normalized,
+    )
+
+    conn = db()
+
+    try:
+
+        if not normalized:
+
+            conn.execute("""
+                DELETE FROM anomaly_policy_overrides
+                WHERE miner_id=?
+            """, (
+                int(miner_id),
+            ))
+
+        else:
+
+            conn.execute("""
+                INSERT INTO anomaly_policy_overrides
+                (
+                    miner_id,
+                    offline_grace_seconds,
+                    hot_temp_c,
+                    hot_clear_c,
+                    hot_grace_seconds,
+                    schedule_grace_seconds,
+                    updated_by,
+                    updated_at
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?
+                )
+
+                ON CONFLICT(miner_id)
+                DO UPDATE SET
+                    offline_grace_seconds=
+                        excluded.offline_grace_seconds,
+                    hot_temp_c=
+                        excluded.hot_temp_c,
+                    hot_clear_c=
+                        excluded.hot_clear_c,
+                    hot_grace_seconds=
+                        excluded.hot_grace_seconds,
+                    schedule_grace_seconds=
+                        excluded.schedule_grace_seconds,
+                    updated_by=
+                        excluded.updated_by,
+                    updated_at=
+                        excluded.updated_at
+            """, (
+                int(miner_id),
+
+                normalized.get(
+                    "offline_grace_seconds"
+                ),
+
+                normalized.get(
+                    "hot_temp_c"
+                ),
+
+                normalized.get(
+                    "hot_clear_c"
+                ),
+
+                normalized.get(
+                    "hot_grace_seconds"
+                ),
+
+                normalized.get(
+                    "schedule_grace_seconds"
+                ),
+
+                str(actor),
+                int(now),
+            ))
+
+        conn.commit()
+
+    finally:
+        conn.close()
+
+    return normalized
+
+
+def clear_miner_anomaly_overrides(
+    miner_id,
+):
+    conn = db()
+
+    try:
+
+        cursor = conn.execute("""
+            DELETE FROM anomaly_policy_overrides
+            WHERE miner_id=?
+        """, (
+            int(miner_id),
+        ))
+
+        conn.commit()
+
+        return cursor.rowcount > 0
+
+    finally:
+        conn.close()
 
 
 def active_issue_exists(miner_id, code):
@@ -444,6 +755,11 @@ __all__ = (
     "ANOMALY_POLICY_SETTING_KEYS",
     "load_anomaly_policy",
     "save_anomaly_policy",
+    "load_miner_anomaly_overrides",
+    "load_anomaly_override_snapshot",
+    "validate_global_policy_against_overrides",
+    "save_miner_anomaly_overrides",
+    "clear_miner_anomaly_overrides",
     "active_issue_exists",
     "anomaly_scan_snapshot",
     "transition_anomaly_condition",

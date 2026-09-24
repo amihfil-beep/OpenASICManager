@@ -8,6 +8,9 @@ from fastapi.responses import HTMLResponse
 
 from anomalies.service import AnomalyRuntime
 from api.anomalies import create_anomaly_router
+from api.anomaly_overrides import (
+    create_anomaly_override_router,
+)
 from api.audit_auth import create_audit_auth_router
 from api.control import create_control_router
 from api.discovery import create_discovery_router
@@ -151,6 +154,11 @@ app.include_router(
 )
 app.include_router(
     create_anomaly_router(
+        log_event
+    )
+)
+app.include_router(
+    create_anomaly_override_router(
         log_event
     )
 )

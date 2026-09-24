@@ -60,6 +60,7 @@ class AppCompositionTests(unittest.TestCase):
             "create_notifications_router",
             "create_scheduler_router",
             "create_anomaly_router",
+            "create_anomaly_override_router",
             "create_telemetry_router",
             "create_operations_router",
             "create_issue_router",

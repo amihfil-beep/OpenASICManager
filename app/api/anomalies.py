@@ -9,6 +9,7 @@ from anomalies.policy import (
 from anomalies.repository import (
     load_anomaly_policy,
     save_anomaly_policy,
+    validate_global_policy_against_overrides,
 )
 
 
@@ -43,6 +44,16 @@ def create_anomaly_router(log_event):
         try:
             normalized = normalize_anomaly_policy(
                 data
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
+        try:
+            validate_global_policy_against_overrides(
+                normalized
             )
         except ValueError as exc:
             raise HTTPException(

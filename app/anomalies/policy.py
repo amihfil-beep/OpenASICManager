@@ -44,6 +44,15 @@ INTEGER_POLICY_FIELDS = {
 }
 
 
+MINER_ANOMALY_OVERRIDE_FIELDS = (
+    "offline_grace_seconds",
+    "hot_temp_c",
+    "hot_clear_c",
+    "hot_grace_seconds",
+    "schedule_grace_seconds",
+)
+
+
 def normalize_temperature(value):
     try:
         return float(value) if value is not None else None
@@ -125,6 +134,134 @@ def normalize_anomaly_policy(data):
     return normalized
 
 
+def normalize_anomaly_overrides(data):
+    if not isinstance(data, dict):
+        raise ValueError(
+            "Per-miner anomaly overrides must be an object"
+        )
+
+    unknown = sorted(
+        set(data)
+        -
+        set(MINER_ANOMALY_OVERRIDE_FIELDS)
+    )
+
+    if unknown:
+        raise ValueError(
+            "Unknown per-miner anomaly policy fields: "
+            + ", ".join(unknown)
+        )
+
+    return {
+        field: _normalize_policy_value(
+            field,
+            value,
+        )
+        for field, value in data.items()
+        if value is not None
+    }
+
+
+def resolve_anomaly_policy(
+    global_policy,
+    overrides=None,
+):
+    effective = normalize_anomaly_policy(
+        dict(global_policy)
+    )
+
+    normalized_overrides = (
+        normalize_anomaly_overrides(
+            overrides or {}
+        )
+    )
+
+    effective.update(
+        normalized_overrides
+    )
+
+    return normalize_anomaly_policy(
+        effective
+    )
+
+
+def apply_anomaly_override_patch(
+    global_policy,
+    current_overrides,
+    patch,
+):
+    if not isinstance(patch, dict):
+        raise ValueError(
+            "Per-miner anomaly overrides must be an object"
+        )
+
+    if not patch:
+        raise ValueError(
+            "At least one anomaly override field is required"
+        )
+
+    unknown = sorted(
+        set(patch)
+        -
+        set(MINER_ANOMALY_OVERRIDE_FIELDS)
+    )
+
+    if unknown:
+        raise ValueError(
+            "Unknown per-miner anomaly policy fields: "
+            + ", ".join(unknown)
+        )
+
+    merged = dict(
+        normalize_anomaly_overrides(
+            current_overrides or {}
+        )
+    )
+
+    for field, value in patch.items():
+
+        if value is None:
+            merged.pop(
+                field,
+                None,
+            )
+
+        else:
+            merged[field] = (
+                _normalize_policy_value(
+                    field,
+                    value,
+                )
+            )
+
+    effective = resolve_anomaly_policy(
+        global_policy,
+        merged,
+    )
+
+    return merged, effective
+
+
+def anomaly_policy_sources(
+    overrides,
+):
+    normalized = (
+        normalize_anomaly_overrides(
+            overrides or {}
+        )
+    )
+
+    return {
+        field: (
+            "OVERRIDE"
+            if field in normalized
+            else "GLOBAL"
+        )
+        for field
+        in ANOMALY_POLICY_FIELDS
+    }
+
+
 def offline_observed(state, active_control_action):
     return (
         state == "OFFLINE"
@@ -176,7 +313,12 @@ __all__ = (
     "DEFAULT_ANOMALY_POLICY",
     "ANOMALY_POLICY_FIELDS",
     "ANOMALY_POLICY_LIMITS",
+    "MINER_ANOMALY_OVERRIDE_FIELDS",
     "normalize_anomaly_policy",
+    "normalize_anomaly_overrides",
+    "resolve_anomaly_policy",
+    "apply_anomaly_override_patch",
+    "anomaly_policy_sources",
     "normalize_temperature",
     "offline_observed",
     "overheat_observed",

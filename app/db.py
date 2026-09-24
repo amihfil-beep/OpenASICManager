@@ -174,6 +174,21 @@ def init_db():
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS anomaly_policy_overrides (
+        miner_id INTEGER PRIMARY KEY,
+
+        offline_grace_seconds INTEGER,
+
+        hot_temp_c REAL,
+        hot_clear_c REAL,
+
+        hot_grace_seconds INTEGER,
+        schedule_grace_seconds INTEGER,
+
+        updated_by TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
     """)
 
     # Firmware detection mode:

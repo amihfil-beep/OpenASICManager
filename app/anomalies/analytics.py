@@ -20,12 +20,42 @@ __all__ = (
 )
 
 
+def _issue_row_value(
+    row,
+    key,
+    default=None,
+):
+    try:
+        keys = row.keys()
+
+    except AttributeError:
+        keys = row
+
+    if key not in keys:
+        return default
+
+    return row[key]
+
+
 def issue_dict(row):
     return {
         "id": row["id"],
         "miner_id": row["miner_id"],
         "ip": row["ip"],
         "name": row["name"],
+
+        "group_id":
+            _issue_row_value(
+                row,
+                "group_id",
+            ),
+
+        "group_name":
+            _issue_row_value(
+                row,
+                "group_name",
+            ),
+
         "code": row["code"],
         "severity": row["severity"],
         "status": row["status"],

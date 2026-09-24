@@ -20,6 +20,8 @@ from maintenance_windows.policy import (
     normalize_maintenance_extend,
 )
 from maintenance_windows.repository import (
+    MaintenanceEmptyGroupError,
+    MaintenanceGroupNotFoundError,
     create_maintenance_window,
     end_maintenance_window,
     extend_maintenance_window,
@@ -32,6 +34,7 @@ from maintenance_windows.repository import (
 async def _json_body(request):
     try:
         return await request.json()
+
     except Exception:
         raise HTTPException(
             status_code=400,
@@ -54,6 +57,30 @@ def _scope_miner(normalized):
         )
 
     return miner
+
+
+def _maintenance_target_text(item):
+
+    if item["scope"] == "MINER":
+
+        return (
+            "MINER "
+            f"#{item['miner_id']} "
+            f"{item['miner_name'] or ''}"
+        ).strip()
+
+
+    if item["scope"] == "GROUP":
+
+        return (
+            "GROUP "
+            f"#{item['group_id']} "
+            f"{item['group_name']} "
+            f"members={item['member_count']}"
+        )
+
+
+    return "FARM"
 
 
 def create_maintenance_router(
@@ -85,16 +112,19 @@ def create_maintenance_router(
         return {
             "timezone": TIMEZONE_NAME,
             "now": now,
+
             "active": [
                 item
                 for item in windows
                 if item["status"] == "ACTIVE"
             ],
+
             "scheduled": [
                 item
                 for item in windows
                 if item["status"] == "SCHEDULED"
             ],
+
             "recent": [
                 item
                 for item in windows
@@ -126,24 +156,29 @@ def create_maintenance_router(
                     now,
                 )
             )
+
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
                 detail=str(exc),
             )
 
+
         miner = _scope_miner(
             normalized
         )
+
 
         conflict = (
             find_maintenance_conflict(
                 scope=normalized["scope"],
                 miner_id=normalized["miner_id"],
+                group_id=normalized["group_id"],
                 starts_at=normalized["starts_at"],
                 ends_at=normalized["ends_at"],
             )
         )
+
 
         if conflict is not None:
             raise HTTPException(
@@ -154,18 +189,37 @@ def create_maintenance_router(
                 ),
             )
 
-        actor = current_audit_actor()
 
-        row = create_maintenance_window(
-            normalized=normalized,
-            actor=actor,
-            now=now,
+        actor = (
+            current_audit_actor()
         )
+
+
+        try:
+            row = create_maintenance_window(
+                normalized=normalized,
+                actor=actor,
+                now=now,
+            )
+
+        except MaintenanceGroupNotFoundError:
+            raise HTTPException(
+                status_code=404,
+                detail="Group not found",
+            )
+
+        except MaintenanceEmptyGroupError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
 
         item = maintenance_window_dict(
             row,
             now,
         )
+
 
         log_event(
             source="MANUAL",
@@ -174,11 +228,12 @@ def create_maintenance_router(
             success=True,
             message=(
                 f"Maintenance #{item['id']} "
-                f"{item['scope']} "
+                f"{_maintenance_target_text(item)} "
                 f"{item['starts_at_iso']} -> "
                 f"{item['ends_at_iso']}"
             ),
         )
+
 
         return {
             "success": True,
@@ -206,9 +261,11 @@ def create_maintenance_router(
                 detail="Maintenance window not found",
             )
 
+
         payload = await _json_body(
             request
         )
+
 
         try:
             normalized = (
@@ -218,19 +275,25 @@ def create_maintenance_router(
                     now,
                 )
             )
+
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
                 detail=str(exc),
             )
 
-        conflict = find_maintenance_conflict(
-            scope=current["scope"],
-            miner_id=current["miner_id"],
-            starts_at=current["starts_at"],
-            ends_at=normalized["ends_at"],
-            exclude_id=current["id"],
+
+        conflict = (
+            find_maintenance_conflict(
+                scope=current["scope"],
+                miner_id=current["miner_id"],
+                group_id=current["group_id"],
+                starts_at=current["starts_at"],
+                ends_at=normalized["ends_at"],
+                exclude_id=current["id"],
+            )
         )
+
 
         if conflict is not None:
             raise HTTPException(
@@ -241,7 +304,11 @@ def create_maintenance_router(
                 ),
             )
 
-        actor = current_audit_actor()
+
+        actor = (
+            current_audit_actor()
+        )
+
 
         row = extend_maintenance_window(
             window_id=window_id,
@@ -250,22 +317,28 @@ def create_maintenance_router(
             now=now,
         )
 
+
         if row is None:
             raise HTTPException(
                 status_code=409,
                 detail="Maintenance window cannot be extended",
             )
 
+
         miner = (
-            get_miner(row["miner_id"])
+            get_miner(
+                row["miner_id"]
+            )
             if row["scope"] == "MINER"
             else None
         )
+
 
         item = maintenance_window_dict(
             row,
             now,
         )
+
 
         log_event(
             source="MANUAL",
@@ -274,9 +347,11 @@ def create_maintenance_router(
             success=True,
             message=(
                 f"Maintenance #{item['id']} "
+                f"{_maintenance_target_text(item)} "
                 f"extended to {item['ends_at_iso']}"
             ),
         )
+
 
         return {
             "success": True,
@@ -297,16 +372,19 @@ def create_maintenance_router(
             window_id
         )
 
+
         if current is None:
             raise HTTPException(
                 status_code=404,
                 detail="Maintenance window not found",
             )
 
+
         status = maintenance_status(
             current,
             now,
         )
+
 
         if status in (
             "ENDED",
@@ -320,7 +398,11 @@ def create_maintenance_router(
                 ),
             )
 
-        actor = current_audit_actor()
+
+        actor = (
+            current_audit_actor()
+        )
+
 
         row = end_maintenance_window(
             window_id=window_id,
@@ -328,22 +410,28 @@ def create_maintenance_router(
             now=now,
         )
 
+
         if row is None:
             raise HTTPException(
                 status_code=409,
                 detail="Maintenance window cannot be ended",
             )
 
+
         miner = (
-            get_miner(row["miner_id"])
+            get_miner(
+                row["miner_id"]
+            )
             if row["scope"] == "MINER"
             else None
         )
+
 
         item = maintenance_window_dict(
             row,
             now,
         )
+
 
         log_event(
             source="MANUAL",
@@ -351,9 +439,12 @@ def create_maintenance_router(
             miner=miner,
             success=True,
             message=(
-                f"Maintenance #{item['id']} ended"
+                f"Maintenance #{item['id']} "
+                f"{_maintenance_target_text(item)} "
+                "ended"
             ),
         )
+
 
         return {
             "success": True,

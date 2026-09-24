@@ -189,6 +189,21 @@ def init_db():
         updated_by TEXT NOT NULL,
         updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS group_anomaly_policy_overrides (
+        group_id INTEGER PRIMARY KEY,
+
+        offline_grace_seconds INTEGER,
+
+        hot_temp_c REAL,
+        hot_clear_c REAL,
+
+        hot_grace_seconds INTEGER,
+        schedule_grace_seconds INTEGER,
+
+        updated_by TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
     """)
 
     # Firmware detection mode:

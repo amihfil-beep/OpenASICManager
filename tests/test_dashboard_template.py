@@ -135,7 +135,10 @@ class DashboardTemplateTests(unittest.TestCase):
             "saveMinerAnomalyPolicy",
             "clearMinerAnomalyPolicy",
             "GLOBAL ONLY",
-            "OVERRIDE",
+            "GLOBAL → GROUP → MINER",
+            "MINER",
+            "group_policy",
+            "group_name",
             "INHERIT ALL",
             "/api/miners/",
             "/anomaly-policy",
@@ -143,6 +146,38 @@ class DashboardTemplateTests(unittest.TestCase):
             "global_policy",
             "overrides",
             "sources",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
+    def test_dashboard_contains_group_anomaly_policy_editor(self):
+        content = dashboard_html()
+
+        expected = (
+            "Group Alert Policy",
+            "groupAnomalyPolicyBackdrop",
+            "groupAnomalyPolicyTitle",
+            "groupAnomalyPolicyRows",
+            "groupAnomalyPolicyInterval",
+            "groupAnomalyPolicyStatus",
+            "groupAnomalyPolicySaveButton",
+            "openGroupAnomalyPolicy",
+            "renderGroupAnomalyPolicy",
+            "groupAnomalyPolicyPayload",
+            "saveGroupAnomalyPolicy",
+            "clearGroupAnomalyPolicy",
+            "GROUP anomaly policy",
+            "MINER overrides remain higher priority",
+            "/api/miner-groups/",
+            "/anomaly-policy",
+            "GLOBAL ONLY",
+            "Group override",
         )
 
         for marker in expected:

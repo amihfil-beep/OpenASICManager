@@ -5,6 +5,10 @@ from fastapi import (
     HTTPException,
 )
 
+from anomalies.repository import (
+    validate_group_policy_removal,
+    validate_miner_group_policy_membership,
+)
 from audit.identity import (
     current_audit_actor,
 )
@@ -240,6 +244,23 @@ def create_miner_group_router(
             current_audit_actor()
         )
 
+        if get_group(group_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Group not found",
+            )
+
+        try:
+            validate_group_policy_removal(
+                group_id
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
         deleted = delete_group(
             group_id
         )
@@ -332,6 +353,30 @@ def create_miner_group_router(
                 ),
             )
 
+        if get_miner(miner_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Miner not found",
+            )
+
+        if get_group(group_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Group not found",
+            )
+
+        try:
+            validate_miner_group_policy_membership(
+                miner_id,
+                group_id,
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
         result = set_miner_group(
             miner_id=miner_id,
             group_id=group_id,
@@ -412,6 +457,24 @@ def create_miner_group_router(
     def miner_group_clear(
         miner_id: int,
     ):
+        if get_miner(miner_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Miner not found",
+            )
+
+        try:
+            validate_miner_group_policy_membership(
+                miner_id,
+                None,
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
         result = set_miner_group(
             miner_id=miner_id,
             group_id=None,

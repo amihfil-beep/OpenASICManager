@@ -13,7 +13,7 @@ from anomalies.policy import (
     normalize_temperature,
     offline_observed,
     overheat_observed,
-    resolve_anomaly_policy,
+    resolve_layered_anomaly_policy,
     schedule_applicable,
 )
 from anomalies.repository import (
@@ -21,6 +21,7 @@ from anomalies.repository import (
     anomaly_scan_snapshot,
     load_anomaly_override_snapshot,
     load_anomaly_policy,
+    load_group_anomaly_override_snapshot,
     transition_anomaly_condition,
 )
 
@@ -99,9 +100,18 @@ def anomaly_scan(
     if anomaly_policy is None:
         anomaly_policy = load_anomaly_policy()
 
+    group_override_snapshot = (
+        load_group_anomaly_override_snapshot(
+            anomaly_policy
+        )
+    )
+
     override_snapshot = (
         load_anomaly_override_snapshot(
-            anomaly_policy
+            anomaly_policy,
+            group_snapshot=(
+                group_override_snapshot
+            ),
         )
     )
 
@@ -120,12 +130,27 @@ def anomaly_scan(
     )
 
     for miner in miners:
+        group_overrides = (
+            group_override_snapshot.get(
+                int(miner["group_id"]),
+                {},
+            )
+            if miner["group_id"]
+            is not None
+            else {}
+        )
+
         effective_policy = (
-            resolve_anomaly_policy(
+            resolve_layered_anomaly_policy(
                 anomaly_policy,
-                override_snapshot.get(
-                    int(miner["id"]),
-                    {},
+                group_overrides=(
+                    group_overrides
+                ),
+                miner_overrides=(
+                    override_snapshot.get(
+                        int(miner["id"]),
+                        {},
+                    )
                 ),
             )
         )

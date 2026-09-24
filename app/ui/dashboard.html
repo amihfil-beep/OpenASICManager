@@ -1912,6 +1912,36 @@ a:hover {
     <div class="filter-box">
 
         <span class="muted">
+            Group:
+        </span>
+
+        <select
+            id="minerGroupFilter"
+            onchange="loadStatus()"
+        >
+            <option value="all">
+                All groups
+            </option>
+
+            <option value="ungrouped">
+                Ungrouped
+            </option>
+        </select>
+
+        <button
+            class="secondary mini"
+            onclick="openMinerGroups()"
+            title="Manage operational miner groups"
+        >
+            GROUPS
+        </button>
+
+    </div>
+
+
+    <div class="filter-box">
+
+        <span class="muted">
             Sort:
         </span>
 
@@ -2295,6 +2325,125 @@ a:hover {
 </div>
 
 
+<div
+    id="minerGroupsBackdrop"
+    class="modal-backdrop"
+>
+
+    <div
+        class="history-modal"
+        style="max-width:900px"
+    >
+
+        <div class="history-header">
+
+            <div>
+
+                <h2 style="margin:0">
+                    Miner Groups
+                </h2>
+
+                <div
+                    class="muted small"
+                    style="margin-top:5px"
+                >
+                    Groups organize miners only.
+                    Changing membership does not
+                    control ASICs or alter scheduler,
+                    maintenance or issue state.
+                </div>
+
+            </div>
+
+
+            <button
+                class="close-button"
+                onclick="closeMinerGroups()"
+            >
+                CLOSE
+            </button>
+
+        </div>
+
+
+        <div
+            style="
+                display:flex;
+                gap:8px;
+                flex-wrap:wrap;
+                align-items:center;
+                margin-bottom:14px;
+            "
+        >
+
+            <input
+                id="minerGroupNameInput"
+                type="text"
+                maxlength="80"
+                placeholder="New group name"
+                style="
+                    flex:1;
+                    min-width:240px;
+                    background:#111318;
+                    color:white;
+                    border:1px solid #343b48;
+                    border-radius:7px;
+                    padding:9px 11px;
+                "
+            >
+
+            <button
+                id="minerGroupCreateButton"
+                class="secondary"
+                onclick="createMinerGroup()"
+            >
+                + ADD GROUP
+            </button>
+
+        </div>
+
+
+        <div
+            id="minerGroupStatus"
+            class="muted small"
+            style="
+                min-height:18px;
+                margin-bottom:10px;
+            "
+        ></div>
+
+
+        <div class="table-wrap">
+
+            <table style="min-width:620px">
+
+                <thead>
+                    <tr>
+                        <th>Group</th>
+                        <th>Members</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody id="minerGroupRows">
+
+                    <tr>
+                        <td colspan="3">
+                            Loading...
+                        </td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
 <div class="table-wrap">
 
 <table class="miner-table">
@@ -2324,6 +2473,11 @@ a:hover {
             id="sortMark-ip"
             class="sort-mark"
         >↕</span>
+    </th>
+
+
+    <th>
+        Group
     </th>
 
 
@@ -11047,6 +11201,729 @@ window.addEventListener(
 
 
 // ============================================================
+// MINER GROUPS
+// ============================================================
+
+window.__minerGroups = [];
+
+
+function minerGroupList() {
+
+    return Array.isArray(
+        window.__minerGroups
+    )
+    ? window.__minerGroups
+    : [];
+}
+
+
+function matchesMinerGroup(
+    miner,
+    filterValue
+) {
+
+    const value =
+        String(
+            filterValue || "all"
+        );
+
+
+    if (value === "all") {
+        return true;
+    }
+
+
+    if (value === "ungrouped") {
+
+        return (
+            miner.group_id
+            === null
+            ||
+            miner.group_id
+            === undefined
+        );
+    }
+
+
+    return (
+        Number(
+            miner.group_id
+        )
+        ===
+        Number(
+            value
+        )
+    );
+}
+
+
+function renderMinerGroupFilter() {
+
+    const element =
+        document.getElementById(
+            "minerGroupFilter"
+        );
+
+
+    if (!element) {
+        return;
+    }
+
+
+    const current =
+        element.value
+        ||
+        "all";
+
+
+    const groups =
+        minerGroupList();
+
+
+    let html = `
+        <option value="all">
+            All groups
+        </option>
+
+        <option value="ungrouped">
+            Ungrouped
+        </option>
+    `;
+
+
+    for (
+        const group
+        of groups
+    ) {
+
+        html += `
+            <option
+                value="${Number(group.id)}"
+            >
+                ${esc(group.name)}
+            </option>
+        `;
+    }
+
+
+    element.innerHTML =
+        html;
+
+
+    const validValues =
+        new Set([
+            "all",
+            "ungrouped",
+            ...groups.map(
+                group =>
+                    String(
+                        group.id
+                    )
+            ),
+        ]);
+
+
+    element.value =
+        validValues.has(
+            current
+        )
+        ? current
+        : "all";
+}
+
+
+function minerGroupSelectHTML(
+    miner
+) {
+
+    const selected =
+        miner.group_id === null
+        ||
+        miner.group_id === undefined
+        ? ""
+        : String(
+            miner.group_id
+        );
+
+
+    let options = `
+        <option
+            value=""
+            ${selected === "" ? "selected" : ""}
+        >
+            Ungrouped
+        </option>
+    `;
+
+
+    for (
+        const group
+        of minerGroupList()
+    ) {
+
+        const value =
+            String(
+                group.id
+            );
+
+        options += `
+            <option
+                value="${Number(group.id)}"
+                ${
+                    value === selected
+                    ? "selected"
+                    : ""
+                }
+            >
+                ${esc(group.name)}
+            </option>
+        `;
+    }
+
+
+    return `
+        <select
+            onchange="
+                assignMinerGroup(
+                    ${Number(miner.id)},
+                    this.value
+                )
+            "
+            title="Operational miner group"
+            style="
+                max-width:180px;
+            "
+        >
+            ${options}
+        </select>
+    `;
+}
+
+
+function renderMinerGroupRows() {
+
+    const body =
+        document.getElementById(
+            "minerGroupRows"
+        );
+
+
+    if (!body) {
+        return;
+    }
+
+
+    const groups =
+        minerGroupList();
+
+
+    if (!groups.length) {
+
+        body.innerHTML = `
+            <tr>
+                <td colspan="3">
+                    No groups configured.
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+
+    let html = "";
+
+
+    for (
+        const group
+        of groups
+    ) {
+
+        html += `
+            <tr>
+
+                <td>
+                    <strong>
+                        ${esc(group.name)}
+                    </strong>
+                </td>
+
+                <td>
+                    ${Number(
+                        group.member_count
+                        || 0
+                    )}
+                </td>
+
+                <td>
+
+                    <button
+                        class="secondary mini"
+                        onclick="
+                            renameMinerGroup(
+                                ${Number(group.id)},
+                                '${esc(group.name)}'
+                            )
+                        "
+                    >
+                        RENAME
+                    </button>
+
+                    <button
+                        class="warning-button mini"
+                        onclick="
+                            deleteMinerGroup(
+                                ${Number(group.id)},
+                                '${esc(group.name)}',
+                                ${Number(
+                                    group.member_count
+                                    || 0
+                                )}
+                            )
+                        "
+                    >
+                        DELETE
+                    </button>
+
+                </td>
+
+            </tr>
+        `;
+    }
+
+
+    body.innerHTML =
+        html;
+}
+
+
+async function loadMinerGroups() {
+
+    const status =
+        document.getElementById(
+            "minerGroupStatus"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miner-groups",
+                {
+                    cache:
+                        "no-store",
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                (
+                    "HTTP "
+                    +
+                    response.status
+                )
+            );
+        }
+
+
+        window.__minerGroups =
+            Array.isArray(
+                data.groups
+            )
+            ? data.groups
+            : [];
+
+
+        renderMinerGroupFilter();
+
+        renderMinerGroupRows();
+
+
+        if (status) {
+
+            status.textContent =
+                (
+                    window.__minerGroups.length
+                    +
+                    " group(s)"
+                );
+        }
+
+
+        if (
+            window.__asicLastStatus
+        ) {
+
+            loadStatus();
+        }
+
+    }
+
+    catch (error) {
+
+        if (status) {
+
+            status.textContent =
+                (
+                    "Group loading failed: "
+                    +
+                    error.message
+                );
+        }
+    }
+}
+
+
+function openMinerGroups() {
+
+    const backdrop =
+        document.getElementById(
+            "minerGroupsBackdrop"
+        );
+
+    if (!backdrop) {
+        return;
+    }
+
+    backdrop.classList.add(
+        "open"
+    );
+
+    loadMinerGroups();
+}
+
+
+function closeMinerGroups() {
+
+    const backdrop =
+        document.getElementById(
+            "minerGroupsBackdrop"
+        );
+
+    if (backdrop) {
+
+        backdrop.classList.remove(
+            "open"
+        );
+    }
+}
+
+
+async function createMinerGroup() {
+
+    const input =
+        document.getElementById(
+            "minerGroupNameInput"
+        );
+
+    const name =
+        String(
+            input?.value
+            ||
+            ""
+        ).trim();
+
+
+    if (!name) {
+
+        alert(
+            "Enter a group name."
+        );
+
+        return;
+    }
+
+
+    const response =
+        await fetch(
+            "/api/miner-groups",
+            {
+                method:
+                    "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        name: name
+                    })
+            }
+        );
+
+
+    const data =
+        await response.json();
+
+
+    if (!response.ok) {
+
+        alert(
+            data.detail
+            ||
+            "Failed to create group"
+        );
+
+        return;
+    }
+
+
+    if (input) {
+        input.value = "";
+    }
+
+
+    await loadMinerGroups();
+
+    await loadStatus();
+
+    await loadLogs();
+}
+
+
+async function renameMinerGroup(
+    groupId,
+    currentName
+) {
+
+    const requested =
+        prompt(
+            "New group name:",
+            currentName
+        );
+
+
+    if (requested === null) {
+        return;
+    }
+
+
+    const name =
+        String(
+            requested
+        ).trim();
+
+
+    if (!name) {
+
+        alert(
+            "Group name must not be empty."
+        );
+
+        return;
+    }
+
+
+    const response =
+        await fetch(
+            `/api/miner-groups/${groupId}`,
+            {
+                method:
+                    "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify({
+                        name: name
+                    })
+            }
+        );
+
+
+    const data =
+        await response.json();
+
+
+    if (!response.ok) {
+
+        alert(
+            data.detail
+            ||
+            "Failed to rename group"
+        );
+
+        return;
+    }
+
+
+    await loadMinerGroups();
+
+    await loadStatus();
+
+    await loadLogs();
+}
+
+
+async function deleteMinerGroup(
+    groupId,
+    groupName,
+    memberCount
+) {
+
+    if (
+        !confirm(
+            "Delete group \""
+            +
+            groupName
+            +
+            "\"?\n\n"
+            +
+            Number(memberCount || 0)
+            +
+            " member(s) will become ungrouped."
+        )
+    ) {
+        return;
+    }
+
+
+    const response =
+        await fetch(
+            `/api/miner-groups/${groupId}`,
+            {
+                method:
+                    "DELETE"
+            }
+        );
+
+
+    const data =
+        await response.json();
+
+
+    if (!response.ok) {
+
+        alert(
+            data.detail
+            ||
+            "Failed to delete group"
+        );
+
+        return;
+    }
+
+
+    await loadMinerGroups();
+
+    await loadStatus();
+
+    await loadLogs();
+}
+
+
+async function assignMinerGroup(
+    minerId,
+    value
+) {
+
+    let response;
+
+
+    if (
+        value === ""
+    ) {
+
+        response =
+            await fetch(
+                `/api/miners/${minerId}/group`,
+                {
+                    method:
+                        "DELETE"
+                }
+            );
+
+    }
+
+    else {
+
+        response =
+            await fetch(
+                `/api/miners/${minerId}/group`,
+                {
+                    method:
+                        "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+                            group_id:
+                                Number(
+                                    value
+                                )
+                        })
+                }
+            );
+    }
+
+
+    const data =
+        await response.json();
+
+
+    if (!response.ok) {
+
+        alert(
+            data.detail
+            ||
+            "Failed to change group"
+        );
+
+        await loadStatus();
+
+        return;
+    }
+
+
+    await loadMinerGroups();
+
+    await loadStatus();
+
+    await loadLogs();
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            document.getElementById(
+                "minerGroupsBackdrop"
+            )
+            ?.classList.contains(
+                "open"
+            )
+        ) {
+
+            closeMinerGroups();
+        }
+    }
+);
+
+
+
+// ============================================================
 // QUICK SEARCH
 // ============================================================
 
@@ -11206,6 +12083,7 @@ function matchesMinerSearch(
         miner.model,
         miner.firmware,
         miner.driver,
+        miner.group_name,
 
         minerEffectiveState(
             miner
@@ -12300,6 +13178,17 @@ async function loadStatus() {
             ).value;
 
 
+        const groupFilter =
+            (
+                document.getElementById(
+                    "minerGroupFilter"
+                )
+                ?.value
+                ||
+                "all"
+            );
+
+
         const minerSearch =
             (
                 document.getElementById(
@@ -12609,6 +13498,16 @@ async function loadStatus() {
 
 
             if (
+                !matchesMinerGroup(
+                    m,
+                    groupFilter
+                )
+            ) {
+                continue;
+            }
+
+
+            if (
                 !matchesMinerSearch(
                     m,
                     minerSearch
@@ -12740,6 +13639,11 @@ async function loadStatus() {
 
                 <td>
                     ${esc(m.ip)}
+                </td>
+
+
+                <td>
+                    ${minerGroupSelectHTML(m)}
                 </td>
 
 
@@ -13553,6 +14457,7 @@ if (savedDiscoveryNetwork) {
 }
 
 
+loadMinerGroups();
 loadStatus();
 loadLogs();
 

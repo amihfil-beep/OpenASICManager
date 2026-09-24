@@ -98,6 +98,76 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(row["enabled"], 0)
         self.assertEqual(row["schedule_enabled"], 0)
 
+    def test_inventory_read_model_includes_group_membership(self):
+        conn = db()
+
+        group_id = conn.execute("""
+            INSERT INTO miner_groups(
+                name,
+                normalized_name,
+                created_by,
+                created_at
+            )
+            VALUES (
+                'Rack A',
+                'rack a',
+                'TEST',
+                100
+            )
+        """).lastrowid
+
+        conn.execute("""
+            UPDATE miners
+            SET group_id=?
+            WHERE id=?
+        """, (
+            group_id,
+            self.miner20,
+        ))
+
+        conn.commit()
+        conn.close()
+
+        rows = {
+            row["id"]: row
+            for row in list_miners()
+        }
+
+        self.assertEqual(
+            rows[self.miner20]["group_id"],
+            group_id,
+        )
+
+        self.assertEqual(
+            rows[self.miner20]["group_name"],
+            "Rack A",
+        )
+
+        self.assertIsNone(
+            rows[self.miner10]["group_id"]
+        )
+
+        items = miner_status_items(
+            list_miners(),
+            [],
+        )
+
+        by_id = {
+            item["id"]: item
+            for item in items
+        }
+
+        self.assertEqual(
+            by_id[self.miner20]["group_id"],
+            group_id,
+        )
+
+        self.assertEqual(
+            by_id[self.miner20]["group_name"],
+            "Rack A",
+        )
+
+
     def test_bulk_schedule_only_updates_enabled_supported_miners(self):
         changed = set_all_schedule_enabled(False)
         self.assertEqual(changed, 1)

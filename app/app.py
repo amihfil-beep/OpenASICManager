@@ -18,6 +18,7 @@ from api.discovery_profiles import create_discovery_profiles_router
 from api.inventory import create_inventory_router
 from api.issues import create_issue_router
 from api.maintenance import create_maintenance_router
+from api.miner_groups import create_miner_group_router
 from api.notifications import create_notifications_router
 from api.operations import create_operations_router
 from api.remote_web import create_remote_web_router
@@ -176,6 +177,11 @@ app.include_router(
 )
 app.include_router(
     create_maintenance_router(
+        log_event
+    )
+)
+app.include_router(
+    create_miner_group_router(
         log_event
     )
 )

@@ -1,0 +1,1 @@
+"""Operational miner-group subsystem."""

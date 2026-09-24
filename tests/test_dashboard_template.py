@@ -153,6 +153,39 @@ class DashboardTemplateTests(unittest.TestCase):
                 )
 
 
+    def test_dashboard_contains_miner_group_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "Miner Groups",
+            "minerGroupsBackdrop",
+            "minerGroupNameInput",
+            "minerGroupRows",
+            "minerGroupFilter",
+            "GROUPS",
+            "loadMinerGroups",
+            "renderMinerGroupFilter",
+            "renderMinerGroupRows",
+            "matchesMinerGroup",
+            "minerGroupSelectHTML",
+            "assignMinerGroup",
+            "createMinerGroup",
+            "renameMinerGroup",
+            "deleteMinerGroup",
+            "/api/miner-groups",
+            "/api/miners/${minerId}/group",
+            "Ungrouped",
+            "Changing membership does not",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_dashboard_contains_telegram_incident_policy(self):
         content = dashboard_html()
 

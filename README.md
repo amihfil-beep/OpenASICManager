@@ -20,15 +20,18 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 - bounded telemetry history and farm/miner charts;
 - reboot and manual controls;
 - configurable anomaly detection policies;
-- Telegram notifications;
+- per-miner anomaly policy overrides;
+- operator issue acknowledgement and notes;
+- bounded planned-maintenance windows;
+- configurable Telegram incident notifications;
 - audit logging;
 - optional secure access to the original ASIC web interface.
 
 ## Current release
 
-**0.4.0**
+**0.5.0**
 
-OpenASICManager 0.4.0 is a farm-observability and policy release. It adds configurable anomaly policies, bounded and downsampled miner/farm telemetry history, richer history charts, and persistent multi-subnet discovery profiles while retaining the operational-safety tooling introduced in 0.3.0.
+OpenASICManager 0.5.0 is an incident-workflow and fleet-policy release. It adds operator acknowledgement for anomaly issues, bounded planned-maintenance windows, per-miner anomaly policy overrides and configurable Telegram incident delivery while keeping anomaly detection, issue history, notification delivery and ASIC control as separate concerns.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -138,11 +141,46 @@ Current anomaly logic includes conditions such as:
 - excessive temperature;
 - scheduler state mismatch.
 
-Global anomaly-policy settings can be changed from the dashboard for scan interval, offline grace, overheat trigger and clear thresholds, overheat grace, and scheduler-mismatch grace. The existing 0.3.0 thresholds remain the defaults until the operator changes them. Alert-policy configuration does not automatically start, stop or reboot ASICs.
+Global anomaly-policy settings can be changed from the dashboard for scan interval, offline grace, overheat trigger and clear thresholds, overheat grace, and scheduler-mismatch grace.
+
+Selected miners may override applicable grace and threshold values independently. Unset fields continue to inherit the current global policy, and the dashboard shows whether each effective value comes from GLOBAL policy or an explicit OVERRIDE. The shared anomaly scan interval remains global-only.
+
+Alert-policy configuration affects detection only and does not automatically start, stop or reboot ASICs.
+
+### Incident workflow
+
+Anomaly issues have an operator acknowledgement state that is separate from the automatically detected condition state.
+
+Operators can:
+
+- acknowledge an issue;
+- record an optional short note;
+- clear an acknowledgement;
+- review who acknowledged the issue and when.
+
+Acknowledgement means that an operator has seen the issue. It does not mean the underlying condition has been fixed, and automatic recovery continues independently.
+
+Planned maintenance can be created for the entire farm or for an individual ASIC. Maintenance windows have explicit start/end times and may be scheduled, extended or ended early.
+
+During active maintenance, covered new anomaly incidents are suppressed from normal notification noise while telemetry, inventory visibility and audit history continue normally. If the condition remains after maintenance expires, it becomes eligible for normal anomaly handling again.
+
+Maintenance never automatically pauses, resumes or reboots ASICs.
 
 ### Telegram
 
 Optional Telegram notifications can report important ASIC events and farm summaries.
+
+Incident delivery can be configured independently for:
+
+- new issues;
+- recovery / clear events;
+- acknowledgement changes;
+- control failures;
+- maintenance events.
+
+Notification policy controls Telegram delivery only. It does not alter anomaly detection, issue persistence, audit history or ASIC control.
+
+Farm-summary scheduling remains independent from incident notification policy.
 
 Telegram is disabled by default.
 

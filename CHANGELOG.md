@@ -4,6 +4,52 @@ All notable changes to OpenASICManager will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-24
+
+Incident-workflow and fleet-policy release focused on giving operators explicit control over issue acknowledgement, planned maintenance, miner-specific anomaly policy exceptions and Telegram incident delivery while preserving separation between detection, history, notifications and ASIC control.
+
+### Added
+
+- Operator acknowledgement workflow for anomaly issues, including acknowledgement actor, timestamp and optional bounded operator note.
+- Dashboard and API support for acknowledging and clearing acknowledgement without changing automatic anomaly open/resolve behavior.
+- Time-bounded maintenance windows with farm-wide or per-miner scope.
+- Maintenance scheduling, extension and explicit early termination from the dashboard/API.
+- Planned-maintenance suppression for new covered anomaly incidents while telemetry and audit history continue normally.
+- Per-miner anomaly policy overrides with global inheritance as the default.
+- Per-field GLOBAL / OVERRIDE source visibility and effective anomaly policy in the API/dashboard.
+- Explicit set, update, clear and inherit-all workflows for per-miner anomaly policy.
+- Persistent Telegram incident-delivery policy with independent controls for new issues, recovery/clear, acknowledgement, control failures and maintenance events.
+- Telegram Incident Policy dashboard controls and secret-safe read/update API.
+- Audit coverage for acknowledgement, maintenance, anomaly-policy override and notification-policy changes.
+- Regression coverage for issue lifecycle, maintenance expiry/scope, policy inheritance, notification routing and delivery/history separation.
+
+### Changed
+
+- Anomaly issues now distinguish automatic condition state from operator acknowledgement state.
+- Maintenance is evaluated independently from scheduler/control state and never acts as an ASIC control command.
+- Still-active anomaly conditions become eligible for normal handling again after maintenance expires.
+- Selected miners may use explicit anomaly grace/threshold overrides while all unset fields continue following the global policy.
+- Global anomaly scan interval remains global-only because it controls the shared scan loop.
+- Global anomaly-policy updates are rejected when they would make an existing valid per-miner effective policy invalid.
+- Telegram incident routing is now policy-controlled after audit persistence instead of being tied only to a fixed event list.
+- Farm-summary scheduling and delivery remain independent from incident notification policy.
+
+### Safety and compatibility
+
+- Acknowledgement means “seen by an operator”; it does not mark an underlying anomaly as fixed.
+- Acknowledgement, maintenance and anomaly-policy configuration never automatically PAUSE, RESUME or REBOOT an ASIC.
+- Maintenance windows are explicitly bounded and do not stop telemetry collection or erase issue/audit history.
+- Existing miners without per-miner overrides retain the 0.4.0 global anomaly behavior.
+- Per-miner overrides affect anomaly evaluation only and do not directly control ASICs.
+- Existing Telegram incident behavior remains compatible by default: issue-open, issue-resolved and control-failure delivery remain enabled when Telegram itself is enabled.
+- Newly introduced acknowledgement and maintenance Telegram event classes are opt-in by default.
+- Telegram remains globally disabled by default on fresh installations.
+- Disabling a Telegram delivery class does not prevent issue persistence or audit logging.
+- Telegram policy read models and audit events do not expose bot tokens, chat IDs or proxy secrets.
+- Existing farm-summary configuration remains independent and unchanged.
+- Public transactional upgrades remain supported from OpenASICManager 0.2.0 and newer public releases.
+- Historical private/legacy 1.5.2 deployments remain outside the generic public upgrade contract.
+
 ## [0.4.0] - 2026-09-17
 
 Farm-observability and policy release focused on making a small real-world ASIC farm easier to observe, diagnose and configure from the dashboard while preserving the operational-safety foundation introduced in 0.3.0.

@@ -15,9 +15,13 @@ from db import (
     get_miner,
 )
 
+from notifications.policy import (
+    notification_delivery_allowed,
+)
 from notifications.repository import (
     find_issue_context,
     list_farm_summary_rows,
+    load_notification_policy,
 )
 
 TIMEZONE_NAME = app_config.TIMEZONE
@@ -46,9 +50,17 @@ TELEGRAM_PROXY = (
 TELEGRAM_EVENT_ACTIONS = {
     "ISSUE_OPEN",
     "ISSUE_RESOLVED",
+
+    "ISSUE_ACKNOWLEDGE",
+    "ISSUE_UNACKNOWLEDGE",
+
     "PAUSE_FAILED",
     "RESUME_FAILED",
     "REBOOT_FAILED",
+
+    "MAINTENANCE_CREATE",
+    "MAINTENANCE_EXTEND",
+    "MAINTENANCE_END",
 }
 
 TELEGRAM_SUMMARY_ENABLED = (
@@ -532,6 +544,97 @@ def telegram_parse_control_message(
     return result
 
 
+def telegram_format_operator_event(
+    source,
+    action,
+    miner,
+    message,
+):
+    titles = {
+        "ISSUE_ACKNOWLEDGE": (
+            "👁️",
+            "ISSUE ACKNOWLEDGED",
+        ),
+
+        "ISSUE_UNACKNOWLEDGE": (
+            "↩️",
+            "ISSUE ACKNOWLEDGEMENT CLEARED",
+        ),
+
+        "MAINTENANCE_CREATE": (
+            "🛠️",
+            "MAINTENANCE CREATED",
+        ),
+
+        "MAINTENANCE_EXTEND": (
+            "🛠️",
+            "MAINTENANCE EXTENDED",
+        ),
+
+        "MAINTENANCE_END": (
+            "✅",
+            "MAINTENANCE ENDED",
+        ),
+    }
+
+    icon, title = titles[
+        action
+    ]
+
+    timestamp = (
+        datetime.now(
+            MOSCOW
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S %Z"
+        )
+    )
+
+    miner = telegram_current_miner(
+        miner
+    )
+
+    name = telegram_row_value(
+        miner,
+        "name",
+    )
+
+    ip = telegram_row_value(
+        miner,
+        "ip",
+    )
+
+    lines = [
+        f"{icon} {title}",
+        "",
+        f"Farm: {ASIC_MANAGER_NAME}",
+    ]
+
+    if name:
+        lines.append(
+            f"ASIC: {name}"
+        )
+
+    if ip:
+        lines.append(
+            f"IP: {ip}"
+        )
+
+    if message:
+        lines.extend([
+            "",
+            f"Details: {message}",
+        ])
+
+    lines.extend([
+        f"Source: {source}",
+        f"Time: {timestamp}",
+    ])
+
+    return "\n".join(
+        lines
+    )
+
+
 def telegram_format_event(
     source,
     action,
@@ -539,6 +642,22 @@ def telegram_format_event(
     success,
     message,
 ):
+
+    if action in (
+        "ISSUE_ACKNOWLEDGE",
+        "ISSUE_UNACKNOWLEDGE",
+        "MAINTENANCE_CREATE",
+        "MAINTENANCE_EXTEND",
+        "MAINTENANCE_END",
+    ):
+        return telegram_format_operator_event(
+            source=source,
+            action=action,
+            miner=miner,
+            message=str(
+                message or ""
+            ),
+        )
 
     message = str(
         message or ""
@@ -929,6 +1048,30 @@ def telegram_event_async(
 
 
     if action not in TELEGRAM_EVENT_ACTIONS:
+        return
+
+
+    try:
+        notification_policy = (
+            load_notification_policy()
+        )
+
+    except Exception as exc:
+
+        # Notification-policy persistence must never
+        # break audit, anomaly processing or control.
+        print(
+            "Telegram notification policy failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        return
+
+
+    if not notification_delivery_allowed(
+        action,
+        notification_policy,
+    ):
         return
 
 
@@ -1695,6 +1838,7 @@ __all__ = (
     'telegram_issue_context',
     'telegram_parse_control_message',
     'telegram_format_event',
+    'telegram_format_operator_event',
     'telegram_event_worker',
     'telegram_summary_set_last_date',
     'telegram_farm_summary_data',

@@ -1234,6 +1234,218 @@ a:hover {
 
 
 <div
+    id="notificationPolicyPanel"
+    class="card"
+    style="
+        margin:0 0 14px 0;
+        padding:14px;
+    "
+>
+
+    <div
+        style="
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:14px;
+            flex-wrap:wrap;
+        "
+    >
+
+        <div>
+
+            <strong>
+                Telegram Incident Policy
+            </strong>
+
+            <div
+                id="notificationPolicyDetail"
+                class="muted small"
+                style="
+                    margin-top:4px;
+                    max-width:900px;
+                "
+            >
+                Loading incident delivery policy...
+            </div>
+
+        </div>
+
+
+        <span
+            id="notificationPolicyStatusBadge"
+            style="
+                display:inline-block;
+                padding:6px 10px;
+                border-radius:999px;
+                background:#555b66;
+                color:white;
+                font-size:12px;
+                font-weight:700;
+            "
+        >
+            Policy CHECK
+        </span>
+
+    </div>
+
+
+    <div
+        style="
+            display:grid;
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(190px,1fr)
+                );
+            gap:10px;
+            margin-top:14px;
+        "
+    >
+
+        <label
+            style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+            "
+        >
+            <input
+                id="notificationPolicyIssueOpen"
+                type="checkbox"
+                disabled
+            >
+            New issue
+        </label>
+
+
+        <label
+            style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+            "
+        >
+            <input
+                id="notificationPolicyIssueResolved"
+                type="checkbox"
+                disabled
+            >
+            Recovery / clear
+        </label>
+
+
+        <label
+            style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+            "
+        >
+            <input
+                id="notificationPolicyAcknowledgement"
+                type="checkbox"
+                disabled
+            >
+            Acknowledgement
+        </label>
+
+
+        <label
+            style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+            "
+        >
+            <input
+                id="notificationPolicyControlFailure"
+                type="checkbox"
+                disabled
+            >
+            Control failure
+        </label>
+
+
+        <label
+            style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+            "
+        >
+            <input
+                id="notificationPolicyMaintenance"
+                type="checkbox"
+                disabled
+            >
+            Maintenance
+        </label>
+
+    </div>
+
+
+    <div
+        style="
+            margin-top:14px;
+            padding-top:12px;
+            border-top:
+                1px solid
+                rgba(128,128,128,.22);
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
+        "
+    >
+
+        <div>
+
+            <div
+                class="muted small"
+            >
+                These switches control Telegram incident
+                delivery only. Detection, issue history,
+                audit history and ASIC control are unchanged.
+            </div>
+
+            <div
+                class="muted small"
+                style="margin-top:3px"
+            >
+                Farm Summary is independent of this policy.
+            </div>
+
+            <div
+                id="notificationPolicyResult"
+                class="small"
+                style="
+                    margin-top:5px;
+                    min-height:16px;
+                "
+            ></div>
+
+        </div>
+
+
+        <button
+            id="saveNotificationPolicyButton"
+            class="secondary mini"
+            onclick="saveNotificationPolicy()"
+            disabled
+        >
+            SAVE POLICY
+        </button>
+
+    </div>
+
+</div>
+
+
+
+
+<div
     id="farmSummaryPanel"
     class="card"
     style="
@@ -13564,6 +13776,507 @@ window.addEventListener(
             loadNotificationHealth,
             30000
         );
+    }
+);
+
+
+
+
+// ============================================================
+// TELEGRAM INCIDENT NOTIFICATION POLICY
+// ============================================================
+
+const NOTIFICATION_POLICY_CONTROLS = [
+
+    {
+        field:
+            "issue_open",
+
+        id:
+            "notificationPolicyIssueOpen"
+    },
+
+    {
+        field:
+            "issue_resolved",
+
+        id:
+            "notificationPolicyIssueResolved"
+    },
+
+    {
+        field:
+            "acknowledgement",
+
+        id:
+            "notificationPolicyAcknowledgement"
+    },
+
+    {
+        field:
+            "control_failure",
+
+        id:
+            "notificationPolicyControlFailure"
+    },
+
+    {
+        field:
+            "maintenance",
+
+        id:
+            "notificationPolicyMaintenance"
+    }
+];
+
+
+window.__notificationPolicy =
+    null;
+
+
+function setNotificationPolicyControlsDisabled(
+    disabled
+) {
+
+    for (
+        const definition
+        of NOTIFICATION_POLICY_CONTROLS
+    ) {
+
+        const element =
+            document.getElementById(
+                definition.id
+            );
+
+        if (element) {
+
+            element.disabled =
+                Boolean(
+                    disabled
+                );
+        }
+    }
+
+
+    const button =
+        document.getElementById(
+            "saveNotificationPolicyButton"
+        );
+
+    if (button) {
+
+        button.disabled =
+            Boolean(
+                disabled
+            );
+    }
+}
+
+
+function setNotificationPolicyBadge(
+    policy
+) {
+
+    const badge =
+        document.getElementById(
+            "notificationPolicyStatusBadge"
+        );
+
+    if (!badge) {
+        return;
+    }
+
+
+    const enabledCount =
+        NOTIFICATION_POLICY_CONTROLS
+        .filter(
+            definition =>
+                Boolean(
+                    policy[
+                        definition.field
+                    ]
+                )
+        )
+        .length;
+
+
+    badge.textContent =
+        (
+            "Incident "
+            +
+            enabledCount
+            +
+            "/"
+            +
+            NOTIFICATION_POLICY_CONTROLS.length
+            +
+            " enabled"
+        );
+
+
+    badge.style.background =
+        enabledCount
+        ? "#246b47"
+        : "#6a707c";
+
+    badge.style.color =
+        "white";
+}
+
+
+function renderNotificationPolicy(
+    data
+) {
+
+    const policy =
+        data.policy
+        || {};
+
+
+    window.__notificationPolicy =
+        {
+            ...policy
+        };
+
+
+    for (
+        const definition
+        of NOTIFICATION_POLICY_CONTROLS
+    ) {
+
+        const element =
+            document.getElementById(
+                definition.id
+            );
+
+        if (!element) {
+            continue;
+        }
+
+        element.checked =
+            Boolean(
+                policy[
+                    definition.field
+                ]
+            );
+    }
+
+
+    setNotificationPolicyBadge(
+        policy
+    );
+
+
+    const detail =
+        document.getElementById(
+            "notificationPolicyDetail"
+        );
+
+    if (detail) {
+
+        detail.textContent =
+            (
+                "Per-event Telegram delivery policy"
+                +
+                (
+                    data.farm_summary_independent
+                    ? " · Farm Summary: independent"
+                    : ""
+                )
+            );
+    }
+
+
+    setNotificationPolicyControlsDisabled(
+        false
+    );
+}
+
+
+function notificationPolicyPayload() {
+
+    const payload = {};
+
+    for (
+        const definition
+        of NOTIFICATION_POLICY_CONTROLS
+    ) {
+
+        const element =
+            document.getElementById(
+                definition.id
+            );
+
+        if (!element) {
+
+            throw new Error(
+                "Notification policy form is incomplete"
+            );
+        }
+
+        payload[
+            definition.field
+        ] = Boolean(
+            element.checked
+        );
+    }
+
+    return payload;
+}
+
+
+async function loadNotificationPolicy() {
+
+    const result =
+        document.getElementById(
+            "notificationPolicyResult"
+        );
+
+
+    setNotificationPolicyControlsDisabled(
+        true
+    );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/notifications/policy",
+                {
+                    cache:
+                        "no-store",
+                }
+            );
+
+
+        let data = {};
+
+        try {
+
+            data =
+                await response.json();
+
+        }
+
+        catch (_) {
+
+            data = {};
+        }
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                (
+                    "HTTP "
+                    +
+                    response.status
+                )
+            );
+        }
+
+
+        renderNotificationPolicy(
+            data
+        );
+
+
+        if (result) {
+
+            result.textContent =
+                "";
+        }
+
+    }
+
+    catch (error) {
+
+        const detail =
+            document.getElementById(
+                "notificationPolicyDetail"
+            );
+
+        if (detail) {
+
+            detail.textContent =
+                "Incident notification policy unavailable";
+        }
+
+
+        if (result) {
+
+            result.textContent =
+                (
+                    "✕ Load failed: "
+                    +
+                    error.message
+                );
+
+            result.style.color =
+                "#e26a70";
+        }
+
+
+        const badge =
+            document.getElementById(
+                "notificationPolicyStatusBadge"
+            );
+
+        if (badge) {
+
+            badge.textContent =
+                "Policy UNKNOWN";
+
+            badge.style.background =
+                "#7a3038";
+        }
+    }
+}
+
+
+async function saveNotificationPolicy() {
+
+    const button =
+        document.getElementById(
+            "saveNotificationPolicyButton"
+        );
+
+    const result =
+        document.getElementById(
+            "notificationPolicyResult"
+        );
+
+
+    if (button) {
+
+        button.disabled =
+            true;
+
+        button.textContent =
+            "SAVING...";
+    }
+
+
+    if (result) {
+
+        result.textContent =
+            "Saving incident notification policy...";
+
+        result.style.color =
+            "#9299a8";
+    }
+
+
+    try {
+
+        const payload =
+            notificationPolicyPayload();
+
+
+        const response =
+            await fetch(
+                "/api/notifications/policy",
+                {
+                    method:
+                        "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        let data = {};
+
+        try {
+
+            data =
+                await response.json();
+
+        }
+
+        catch (_) {
+
+            data = {};
+        }
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                (
+                    "HTTP "
+                    +
+                    response.status
+                )
+            );
+        }
+
+
+        renderNotificationPolicy(
+            data
+        );
+
+
+        if (result) {
+
+            result.textContent =
+                "✓ Incident notification policy saved";
+
+            result.style.color =
+                "#66c58c";
+        }
+
+    }
+
+    catch (error) {
+
+        if (result) {
+
+            result.textContent =
+                (
+                    "✕ Save failed: "
+                    +
+                    error.message
+                );
+
+            result.style.color =
+                "#e26a70";
+        }
+
+    }
+
+    finally {
+
+        if (button) {
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                "SAVE POLICY";
+        }
+    }
+}
+
+
+window.addEventListener(
+    "load",
+    function () {
+
+        loadNotificationPolicy();
     }
 );
 

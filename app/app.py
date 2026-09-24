@@ -144,7 +144,8 @@ app = FastAPI(
 
 app.include_router(
     create_notifications_router(
-        telegram_runtime
+        telegram_runtime,
+        log_event,
     )
 )
 app.include_router(

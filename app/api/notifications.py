@@ -3,9 +3,24 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Request,
+)
 
 import config as app_config
+
+from audit.identity import (
+    current_audit_actor,
+)
+from notifications.policy import (
+    apply_notification_policy_patch,
+)
+from notifications.repository import (
+    load_notification_policy,
+    save_notification_policy,
+)
 from notifications.telegram import (
     TELEGRAM_CHAT_ID,
     TELEGRAM_NOTIFICATIONS_ENABLED,
@@ -26,8 +41,137 @@ TIMEZONE_NAME = app_config.TIMEZONE
 MOSCOW = ZoneInfo(TIMEZONE_NAME)
 
 
-def create_notifications_router(runtime):
+async def _notification_json_body(
+    request,
+):
+    try:
+        return await request.json()
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid JSON body",
+        )
+
+
+def create_notifications_router(
+    runtime,
+    log_event,
+):
     router = APIRouter()
+
+    @router.get(
+        "/api/notifications/policy"
+    )
+    def notifications_policy_get():
+        return {
+            "provider":
+                "telegram",
+
+            "policy":
+                load_notification_policy(),
+
+            "farm_summary_independent":
+                True,
+        }
+
+
+    @router.put(
+        "/api/notifications/policy"
+    )
+    async def notifications_policy_update(
+        request: Request,
+    ):
+        payload = (
+            await _notification_json_body(
+                request
+            )
+        )
+
+        current = (
+            load_notification_policy()
+        )
+
+        try:
+            updated = (
+                apply_notification_policy_patch(
+                    current,
+                    payload,
+                )
+            )
+
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
+        if updated != current:
+
+            saved = (
+                save_notification_policy(
+                    updated
+                )
+            )
+
+            changed = [
+                field
+                for field
+                in saved
+                if (
+                    saved[field]
+                    != current[field]
+                )
+            ]
+
+            actor = (
+                current_audit_actor()
+            )
+
+            details = ", ".join(
+                (
+                    f"{field}="
+                    +
+                    (
+                        "enabled"
+                        if saved[field]
+                        else "disabled"
+                    )
+                )
+                for field in changed
+            )
+
+            log_event(
+                source="MANUAL",
+                action=(
+                    "NOTIFICATION_POLICY_UPDATE"
+                ),
+                miner=None,
+                success=True,
+                message=(
+                    "Telegram incident notification "
+                    f"policy updated by {actor}: "
+                    + details
+                ),
+            )
+
+        else:
+            saved = current
+
+        return {
+            "success":
+                True,
+
+            "provider":
+                "telegram",
+
+            "policy":
+                saved,
+
+            "farm_summary_independent":
+                True,
+        }
+
 
     @router.get("/api/notifications/summary/status")
     def notification_summary_status():

@@ -28,8 +28,14 @@ def list_miners():
     try:
         return list(
             conn.execute("""
-                SELECT *
-                FROM miners
+                SELECT
+                    m.*,
+                    g.name AS group_name
+
+                FROM miners m
+
+                LEFT JOIN miner_groups g
+                    ON g.id=m.group_id
             """).fetchall()
         )
     finally:

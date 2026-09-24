@@ -223,6 +223,45 @@ def init_db():
     """)
 
 
+    # --------------------------------------------------------
+    # Operational miner groups
+    # --------------------------------------------------------
+
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS miner_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL UNIQUE,
+
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+
+        updated_by TEXT,
+        updated_at INTEGER
+    );
+    """)
+
+    miner_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(miners)"
+        ).fetchall()
+    }
+
+    if "group_id" not in miner_columns:
+
+        conn.execute("""
+            ALTER TABLE miners
+            ADD COLUMN group_id INTEGER
+        """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_miners_group
+        ON miners(group_id)
+    """)
+
+
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS action_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

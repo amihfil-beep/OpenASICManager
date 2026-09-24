@@ -38,6 +38,8 @@ def miner_status_items(
             "id": row["id"],
             "name": row["name"],
             "ip": row["ip"],
+            "group_id": row["group_id"],
+            "group_name": row["group_name"],
             "driver": row["driver"],
             "detection_mode": (
                 row["detection_mode"]

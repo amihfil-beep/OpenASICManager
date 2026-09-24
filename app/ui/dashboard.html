@@ -2186,6 +2186,10 @@ a:hover {
     </th>
 
     <th>
+        Alert policy
+    </th>
+
+    <th>
         Control
     </th>
 
@@ -2631,6 +2635,153 @@ a:hover {
         >
             SAVE
         </button>
+
+    </div>
+
+</div>
+
+</div>
+
+
+<div
+    id="minerAnomalyPolicyBackdrop"
+    class="modal-backdrop"
+    onclick="minerAnomalyPolicyBackdropClick(event)"
+>
+
+<div
+    class="history-modal"
+    onclick="event.stopPropagation()"
+    style="max-width:1100px"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2
+                id="minerAnomalyPolicyTitle"
+                style="margin:0"
+            >
+                ASIC Alert Policy
+            </h2>
+
+            <div
+                class="muted"
+                style="margin-top:5px"
+            >
+                Per-ASIC anomaly settings.
+                GLOBAL means the current global value is inherited.
+                OVERRIDE means this ASIC keeps its own value.
+                These settings affect anomaly detection only and
+                never directly control the ASIC.
+            </div>
+
+        </div>
+
+        <button
+            class="close-button"
+            onclick="closeMinerAnomalyPolicy()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div
+        id="minerAnomalyPolicyInterval"
+        class="muted small"
+        style="margin-bottom:14px"
+    >
+        Scan interval is global only.
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table
+            style="min-width:880px"
+        >
+
+            <thead>
+
+                <tr>
+                    <th>Setting</th>
+                    <th>Source</th>
+                    <th>Global</th>
+                    <th>Effective</th>
+                    <th>Override</th>
+                </tr>
+
+            </thead>
+
+            <tbody
+                id="minerAnomalyPolicyRows"
+            >
+                <tr>
+                    <td colspan="5">
+                        Loading...
+                    </td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    <div
+        id="minerAnomalyPolicyStatus"
+        class="muted small"
+        style="margin-top:14px"
+    >
+    </div>
+
+
+    <div
+        class="schedule-rule-form-actions"
+        style="
+            margin-top:18px;
+            justify-content:space-between;
+        "
+    >
+
+        <div>
+
+            <button
+                class="warning-button"
+                onclick="clearMinerAnomalyPolicy()"
+            >
+                INHERIT ALL
+            </button>
+
+        </div>
+
+
+        <div
+            style="
+                display:flex;
+                gap:8px;
+            "
+        >
+
+            <button
+                class="secondary"
+                onclick="closeMinerAnomalyPolicy()"
+            >
+                CANCEL
+            </button>
+
+            <button
+                id="minerAnomalyPolicySaveButton"
+                class="start"
+                onclick="saveMinerAnomalyPolicy()"
+            >
+                SAVE
+            </button>
+
+        </div>
 
     </div>
 
@@ -6895,6 +7046,972 @@ document.addEventListener(
 );
 
 
+// ============================================================
+// PER-MINER ANOMALY POLICY
+// ============================================================
+
+window.__minerAnomalyPolicyCache =
+    window.__minerAnomalyPolicyCache
+    || {};
+
+window.__minerAnomalyPolicySummary =
+    window.__minerAnomalyPolicySummary
+    || {};
+
+window.__minerAnomalyPolicySummaryLoaded =
+    false;
+
+window.__minerAnomalyPolicySummaryLoading =
+    false;
+
+window.__minerAnomalyPolicyEditingId =
+    null;
+
+
+const MINER_ANOMALY_POLICY_FIELDS = [
+
+    {
+        field:
+            "offline_grace_seconds",
+
+        label:
+            "Offline grace",
+
+        unit:
+            "s",
+
+        min:
+            0,
+
+        max:
+            86400,
+
+        step:
+            1
+    },
+
+    {
+        field:
+            "hot_temp_c",
+
+        label:
+            "Hot trigger",
+
+        unit:
+            "°C",
+
+        min:
+            40,
+
+        max:
+            120,
+
+        step:
+            0.1
+    },
+
+    {
+        field:
+            "hot_clear_c",
+
+        label:
+            "Hot clear",
+
+        unit:
+            "°C",
+
+        min:
+            30,
+
+        max:
+            119.9,
+
+        step:
+            0.1
+    },
+
+    {
+        field:
+            "hot_grace_seconds",
+
+        label:
+            "Hot grace",
+
+        unit:
+            "s",
+
+        min:
+            0,
+
+        max:
+            86400,
+
+        step:
+            1
+    },
+
+    {
+        field:
+            "schedule_grace_seconds",
+
+        label:
+            "Schedule mismatch grace",
+
+        unit:
+            "s",
+
+        min:
+            0,
+
+        max:
+            86400,
+
+        step:
+            1
+    }
+];
+
+
+async function loadMinerAnomalyPolicySummary() {
+
+    if (
+        window.__minerAnomalyPolicySummaryLoading
+    ) {
+        return;
+    }
+
+    window.__minerAnomalyPolicySummaryLoading =
+        true;
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/anomaly-policy-overrides"
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Policy override summary request failed"
+            );
+        }
+
+        const summary = {};
+
+        for (
+            const item
+            of (
+                Array.isArray(
+                    data.miners
+                )
+                ? data.miners
+                : []
+            )
+        ) {
+
+            summary[
+                String(item.miner_id)
+            ] = item;
+        }
+
+        window.__minerAnomalyPolicySummary =
+            summary;
+
+        window.__minerAnomalyPolicySummaryLoaded =
+            true;
+
+        if (
+            window.__asicLastStatus
+        ) {
+
+            loadStatus();
+        }
+
+    }
+
+    catch (error) {
+
+        console.warn(
+            "Per-ASIC policy summary:",
+            error
+        );
+    }
+
+    finally {
+
+        window.__minerAnomalyPolicySummaryLoading =
+            false;
+    }
+}
+
+
+function minerAnomalyPolicyButtonHTML(
+    miner
+) {
+
+    const cached =
+        window.__minerAnomalyPolicyCache[
+            String(miner.id)
+        ];
+
+    const summary =
+        window.__minerAnomalyPolicySummary[
+            String(miner.id)
+        ];
+
+    let count = null;
+
+    if (cached) {
+
+        count =
+            Object.keys(
+                cached.overrides
+                || {}
+            ).length;
+    }
+
+    else if (
+        window.__minerAnomalyPolicySummaryLoaded
+    ) {
+
+        count =
+            summary
+            ? Number(
+                summary.override_count
+                || 0
+            )
+            : 0;
+    }
+
+
+    let label =
+        "POLICY";
+
+    let title =
+        "Loading per-ASIC anomaly policy state";
+
+    if (count !== null) {
+
+        if (count > 0) {
+
+            label =
+                "OVERRIDE "
+                +
+                count;
+
+            title =
+                count
+                +
+                " anomaly policy override(s)";
+        }
+
+        else {
+
+            label =
+                "GLOBAL";
+
+            title =
+                "All anomaly policy fields inherited";
+        }
+    }
+
+    return `
+        <button
+            class="secondary mini"
+            onclick="
+                openMinerAnomalyPolicy(
+                    ${Number(miner.id)}
+                )
+            "
+            title="${esc(title)}"
+        >
+            ${esc(label)}
+        </button>
+    `;
+}
+
+
+function minerAnomalyPolicyValue(
+    value,
+    unit
+) {
+
+    if (
+        value === null
+        ||
+        value === undefined
+    ) {
+        return "—";
+    }
+
+    return (
+        esc(value)
+        +
+        (
+            unit
+            ? " " + esc(unit)
+            : ""
+        )
+    );
+}
+
+
+function renderMinerAnomalyPolicy(
+    data
+) {
+
+    window.__minerAnomalyPolicyCache[
+        String(data.miner_id)
+    ] = data;
+
+    window.__minerAnomalyPolicySummary[
+        String(data.miner_id)
+    ] = {
+        miner_id:
+            Number(
+                data.miner_id
+            ),
+
+        override_count:
+            Object.keys(
+                data.overrides
+                || {}
+            ).length,
+
+        override_fields:
+            Object.keys(
+                data.overrides
+                || {}
+            ).sort()
+    };
+
+    const rows =
+        document.getElementById(
+            "minerAnomalyPolicyRows"
+        );
+
+    const sources =
+        data.sources
+        || {};
+
+    const overrides =
+        data.overrides
+        || {};
+
+    const globalPolicy =
+        data.global_policy
+        || {};
+
+    const effectivePolicy =
+        data.effective_policy
+        || {};
+
+
+    rows.innerHTML =
+        MINER_ANOMALY_POLICY_FIELDS
+        .map(
+            definition => {
+
+                const field =
+                    definition.field;
+
+                const isOverride =
+                    sources[field]
+                    === "OVERRIDE";
+
+                const inputValue =
+                    isOverride
+                    ? overrides[field]
+                    : effectivePolicy[field];
+
+                return `
+                    <tr>
+
+                        <td>
+                            ${esc(
+                                definition.label
+                            )}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${
+                                    isOverride
+                                    ? "OVERRIDE"
+                                    : "GLOBAL"
+                                }
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${minerAnomalyPolicyValue(
+                                globalPolicy[field],
+                                definition.unit
+                            )}
+                        </td>
+
+                        <td>
+                            ${minerAnomalyPolicyValue(
+                                effectivePolicy[field],
+                                definition.unit
+                            )}
+                        </td>
+
+                        <td>
+
+                            <label
+                                style="
+                                    display:flex;
+                                    align-items:center;
+                                    gap:8px;
+                                "
+                            >
+
+                                <input
+                                    id="minerPolicyOverride_${field}"
+                                    type="checkbox"
+                                    ${
+                                        isOverride
+                                        ? "checked"
+                                        : ""
+                                    }
+                                    onchange="
+                                        minerAnomalyPolicyOverrideChanged(
+                                            '${field}'
+                                        )
+                                    "
+                                >
+
+                                <input
+                                    id="minerPolicyValue_${field}"
+                                    type="number"
+                                    min="${definition.min}"
+                                    max="${definition.max}"
+                                    step="${definition.step}"
+                                    value="${esc(inputValue)}"
+                                    ${
+                                        isOverride
+                                        ? ""
+                                        : "disabled"
+                                    }
+                                    style="
+                                        width:120px;
+                                    "
+                                >
+
+                            </label>
+
+                        </td>
+
+                    </tr>
+                `;
+            }
+        )
+        .join("");
+
+
+    document.getElementById(
+        "minerAnomalyPolicyInterval"
+    ).textContent =
+        (
+            "Scan interval: "
+            +
+            data.global_policy.interval_seconds
+            +
+            " s · GLOBAL ONLY"
+        );
+
+
+    document.getElementById(
+        "minerAnomalyPolicyStatus"
+    ).textContent =
+        (
+            Object.keys(
+                overrides
+            ).length
+            +
+            " explicit override(s). "
+            +
+            "Unchecked fields inherit the global policy."
+        );
+}
+
+
+function minerAnomalyPolicyOverrideChanged(
+    field
+) {
+
+    const checkbox =
+        document.getElementById(
+            "minerPolicyOverride_"
+            + field
+        );
+
+    const input =
+        document.getElementById(
+            "minerPolicyValue_"
+            + field
+        );
+
+    if (
+        !checkbox
+        ||
+        !input
+    ) {
+        return;
+    }
+
+    input.disabled =
+        !checkbox.checked;
+
+    if (
+        checkbox.checked
+        &&
+        input.value === ""
+    ) {
+
+        const minerId =
+            window.__minerAnomalyPolicyEditingId;
+
+        const cached =
+            window.__minerAnomalyPolicyCache[
+                String(minerId)
+            ];
+
+        if (
+            cached
+            &&
+            cached.effective_policy
+        ) {
+
+            input.value =
+                cached.effective_policy[
+                    field
+                ];
+        }
+    }
+}
+
+
+function minerAnomalyPolicyPayload() {
+
+    const payload = {};
+
+    for (
+        const definition
+        of MINER_ANOMALY_POLICY_FIELDS
+    ) {
+
+        const field =
+            definition.field;
+
+        const checkbox =
+            document.getElementById(
+                "minerPolicyOverride_"
+                + field
+            );
+
+        const input =
+            document.getElementById(
+                "minerPolicyValue_"
+                + field
+            );
+
+        if (
+            !checkbox
+            ||
+            !input
+        ) {
+
+            throw new Error(
+                "Policy form is incomplete"
+            );
+        }
+
+        if (!checkbox.checked) {
+
+            payload[field] =
+                null;
+
+            continue;
+        }
+
+        if (input.value === "") {
+
+            throw new Error(
+                definition.label
+                +
+                " requires a value"
+            );
+        }
+
+        payload[field] =
+            Number(
+                input.value
+            );
+    }
+
+    return payload;
+}
+
+
+async function openMinerAnomalyPolicy(
+    minerId
+) {
+
+    window.__minerAnomalyPolicyEditingId =
+        Number(
+            minerId
+        );
+
+    const miners =
+        window.__asicLastStatus
+        ?.miners
+        ||
+        [];
+
+    const miner =
+        miners.find(
+            item =>
+                Number(item.id)
+                ===
+                Number(minerId)
+        );
+
+
+    document.getElementById(
+        "minerAnomalyPolicyTitle"
+    ).textContent =
+        (
+            "ASIC Alert Policy"
+            +
+            (
+                miner
+                ? (
+                    " · "
+                    +
+                    miner.name
+                    +
+                    " · "
+                    +
+                    miner.ip
+                )
+                : (
+                    " · ASIC #"
+                    +
+                    minerId
+                )
+            )
+        );
+
+
+    document.getElementById(
+        "minerAnomalyPolicyRows"
+    ).innerHTML =
+        `
+            <tr>
+                <td colspan="5">
+                    Loading...
+                </td>
+            </tr>
+        `;
+
+
+    document.getElementById(
+        "minerAnomalyPolicyStatus"
+    ).textContent =
+        "Loading per-ASIC alert policy...";
+
+
+    document.getElementById(
+        "minerAnomalyPolicyBackdrop"
+    ).classList.add(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miners/"
+                +
+                Number(minerId)
+                +
+                "/anomaly-policy"
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Per-ASIC alert policy request failed"
+            );
+        }
+
+        renderMinerAnomalyPolicy(
+            data
+        );
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "minerAnomalyPolicyStatus"
+        ).textContent =
+            (
+                "Per-ASIC alert policy error: "
+                +
+                error.message
+            );
+    }
+}
+
+
+function closeMinerAnomalyPolicy() {
+
+    window.__minerAnomalyPolicyEditingId =
+        null;
+
+    document.getElementById(
+        "minerAnomalyPolicyBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function minerAnomalyPolicyBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        ===
+        "minerAnomalyPolicyBackdrop"
+    ) {
+
+        closeMinerAnomalyPolicy();
+    }
+}
+
+
+async function saveMinerAnomalyPolicy() {
+
+    const minerId =
+        window.__minerAnomalyPolicyEditingId;
+
+    if (!minerId) {
+        return;
+    }
+
+    const status =
+        document.getElementById(
+            "minerAnomalyPolicyStatus"
+        );
+
+    const button =
+        document.getElementById(
+            "minerAnomalyPolicySaveButton"
+        );
+
+    button.disabled =
+        true;
+
+    status.textContent =
+        "Saving per-ASIC alert policy...";
+
+
+    try {
+
+        const payload =
+            minerAnomalyPolicyPayload();
+
+        const response =
+            await fetch(
+                "/api/miners/"
+                +
+                Number(minerId)
+                +
+                "/anomaly-policy",
+                {
+                    method:
+                        "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Per-ASIC alert policy update failed"
+            );
+        }
+
+        renderMinerAnomalyPolicy(
+            data
+        );
+
+        loadStatus();
+
+        status.textContent =
+            (
+                "Saved. Effective anomaly policy "
+                +
+                "is active without a service restart."
+            );
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "Per-ASIC alert policy error: "
+                +
+                error.message
+            );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+async function clearMinerAnomalyPolicy() {
+
+    const minerId =
+        window.__minerAnomalyPolicyEditingId;
+
+    if (!minerId) {
+        return;
+    }
+
+    if (
+        !confirm(
+            "Return all anomaly policy fields "
+            +
+            "for this ASIC to GLOBAL inheritance?"
+        )
+    ) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "minerAnomalyPolicyStatus"
+        );
+
+    status.textContent =
+        "Clearing per-ASIC overrides...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miners/"
+                +
+                Number(minerId)
+                +
+                "/anomaly-policy",
+                {
+                    method:
+                        "DELETE"
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Per-ASIC alert policy clear failed"
+            );
+        }
+
+        renderMinerAnomalyPolicy(
+            data
+        );
+
+        loadStatus();
+
+        status.textContent =
+            "All fields now inherit GLOBAL policy.";
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "Per-ASIC alert policy error: "
+                +
+                error.message
+            );
+    }
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            document.getElementById(
+                "minerAnomalyPolicyBackdrop"
+            ).classList.contains(
+                "open"
+            )
+        ) {
+
+            closeMinerAnomalyPolicy();
+        }
+    }
+);
+
+
 let anomalyPolicyOpen = false;
 let anomalyPolicyDefaults = null;
 
@@ -10953,6 +12070,15 @@ async function loadStatus() {
         window.__asicLastStatus =
             data;
 
+        if (
+            !window.__minerAnomalyPolicySummaryLoaded
+            &&
+            !window.__minerAnomalyPolicySummaryLoading
+        ) {
+
+            loadMinerAnomalyPolicySummary();
+        }
+
         const nowEpoch =
             Date.now() / 1000;
 
@@ -11559,6 +12685,13 @@ async function loadStatus() {
                 <td>
                     ${maintenanceBadgeHTML(
                         m.id
+                    )}
+                </td>
+
+
+                <td>
+                    ${minerAnomalyPolicyButtonHTML(
+                        m
                     )}
                 </td>
 

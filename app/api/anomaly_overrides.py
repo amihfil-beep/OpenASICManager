@@ -14,6 +14,7 @@ from anomalies.policy import (
 )
 from anomalies.repository import (
     clear_miner_anomaly_overrides,
+    load_anomaly_override_snapshot,
     load_anomaly_policy,
     load_miner_anomaly_overrides,
     save_miner_anomaly_overrides,
@@ -97,6 +98,41 @@ def create_anomaly_override_router(
     log_event,
 ):
     router = APIRouter()
+
+    @router.get(
+        "/api/anomaly-policy-overrides"
+    )
+    def api_anomaly_policy_override_summary():
+        global_policy = (
+            load_anomaly_policy()
+        )
+
+        snapshot = (
+            load_anomaly_override_snapshot(
+                global_policy
+            )
+        )
+
+        return {
+            "miners": [
+                {
+                    "miner_id":
+                        int(miner_id),
+
+                    "override_count":
+                        len(overrides),
+
+                    "override_fields":
+                        sorted(
+                            overrides.keys()
+                        ),
+                }
+                for miner_id, overrides
+                in sorted(
+                    snapshot.items()
+                )
+            ]
+        }
 
     @router.get(
         "/api/miners/{miner_id}/anomaly-policy"

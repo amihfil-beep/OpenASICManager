@@ -465,6 +465,53 @@ class AnomalyOverrideApiTests(
         )
 
 
+    async def test_bulk_summary_lists_only_override_miners(self):
+
+        save_miner_anomaly_overrides(
+            miner_id=self.miner_id,
+            overrides={
+                "offline_grace_seconds": 15,
+                "hot_grace_seconds": 20,
+            },
+            actor="TEST",
+            now=100,
+        )
+
+        router = (
+            create_anomaly_override_router(
+                lambda **kwargs: None
+            )
+        )
+
+        endpoint = self.endpoint(
+            router,
+            "/api/anomaly-policy-overrides",
+            "GET",
+        )
+
+        result = endpoint()
+
+        self.assertEqual(
+            result,
+            {
+                "miners": [
+                    {
+                        "miner_id":
+                            self.miner_id,
+
+                        "override_count":
+                            2,
+
+                        "override_fields": [
+                            "hot_grace_seconds",
+                            "offline_grace_seconds",
+                        ],
+                    }
+                ]
+            },
+        )
+
+
     async def test_get_returns_effective_policy_and_sources(self):
 
         router = (

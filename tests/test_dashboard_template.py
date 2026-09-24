@@ -153,6 +153,43 @@ class DashboardTemplateTests(unittest.TestCase):
                 )
 
 
+    def test_dashboard_contains_telegram_incident_policy(self):
+        content = dashboard_html()
+
+        expected = (
+            "Telegram Incident Policy",
+            "notificationPolicyPanel",
+            "notificationPolicyDetail",
+            "notificationPolicyStatusBadge",
+            "notificationPolicyIssueOpen",
+            "notificationPolicyIssueResolved",
+            "notificationPolicyAcknowledgement",
+            "notificationPolicyControlFailure",
+            "notificationPolicyMaintenance",
+            "saveNotificationPolicyButton",
+            "NOTIFICATION_POLICY_CONTROLS",
+            "loadNotificationPolicy",
+            "renderNotificationPolicy",
+            "notificationPolicyPayload",
+            "saveNotificationPolicy",
+            "/api/notifications/policy",
+            "New issue",
+            "Recovery / clear",
+            "Acknowledgement",
+            "Control failure",
+            "Maintenance",
+            "Farm Summary is independent",
+            "Incident notification policy saved",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_history_charts_use_bucket_metadata_and_show_gaps(self):
         content = dashboard_html()
 

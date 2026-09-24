@@ -43,6 +43,62 @@ class NotificationFormattingTests(unittest.TestCase):
             "3.50 kW",
         )
 
+    def test_operator_event_formatting(self):
+
+        acknowledged = (
+            telegram.telegram_format_event(
+                source="MANUAL",
+                action="ISSUE_ACKNOWLEDGE",
+                miner={
+                    "id": 999999,
+                    "name": "TEST-ASIC",
+                    "ip": "192.0.2.10",
+                },
+                success=True,
+                message="Issue #12 acknowledged",
+            )
+        )
+
+        self.assertIn(
+            "ISSUE ACKNOWLEDGED",
+            acknowledged,
+        )
+
+        self.assertIn(
+            "TEST-ASIC",
+            acknowledged,
+        )
+
+        self.assertIn(
+            "Issue #12 acknowledged",
+            acknowledged,
+        )
+
+
+        maintenance = (
+            telegram.telegram_format_event(
+                source="MANUAL",
+                action="MAINTENANCE_CREATE",
+                miner=None,
+                success=True,
+                message=(
+                    "Maintenance #4 FARM "
+                    "2026-09-24 -> 2026-09-25"
+                ),
+            )
+        )
+
+        self.assertIn(
+            "MAINTENANCE CREATED",
+            maintenance,
+        )
+
+        self.assertIn(
+            "Maintenance #4 FARM",
+            maintenance,
+        )
+
+
     def test_control_message_parser(self):
         parsed = telegram.telegram_parse_control_message(
             "Expected=MINING actual=OFFLINE attempts=2/3"

@@ -591,7 +591,7 @@ class AnomalyOverrideApiTests(
             result["sources"][
                 "offline_grace_seconds"
             ],
-            "OVERRIDE",
+            "MINER",
         )
 
         result = await endpoint(

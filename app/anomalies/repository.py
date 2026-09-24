@@ -8,7 +8,9 @@ from anomalies.policy import (
     MINER_ANOMALY_OVERRIDE_FIELDS,
     normalize_anomaly_overrides,
     normalize_anomaly_policy,
+    normalize_group_anomaly_overrides,
     resolve_anomaly_policy,
+    resolve_layered_anomaly_policy,
 )
 from db import db
 
@@ -99,13 +101,152 @@ def _override_values_from_row(row):
     }
 
 
-def load_miner_anomaly_overrides(
-    miner_id,
+def _miner_group_id(miner_id):
+    conn = db()
+
+    try:
+        row = conn.execute("""
+            SELECT group_id
+            FROM miners
+            WHERE id=?
+        """, (
+            int(miner_id),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+    if row is None:
+        return None
+
+    return row["group_id"]
+
+
+def load_group_anomaly_overrides(
+    group_id,
+    global_policy=None,
+):
+    if group_id is None:
+        return {}
+
+    if global_policy is None:
+        global_policy = (
+            load_anomaly_policy()
+        )
+
+    conn = db()
+
+    try:
+        row = conn.execute("""
+            SELECT *
+            FROM group_anomaly_policy_overrides
+            WHERE group_id=?
+        """, (
+            int(group_id),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+    raw = _override_values_from_row(
+        row
+    )
+
+    try:
+        overrides = (
+            normalize_group_anomaly_overrides(
+                raw
+            )
+        )
+
+        resolve_layered_anomaly_policy(
+            global_policy,
+            group_overrides=overrides,
+            miner_overrides={},
+        )
+
+        return overrides
+
+    except ValueError:
+        # Corrupted/manual rows fall back to
+        # GLOBAL inheritance.
+        return {}
+
+
+def load_group_anomaly_override_snapshot(
     global_policy=None,
 ):
     if global_policy is None:
         global_policy = (
             load_anomaly_policy()
+        )
+
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT *
+            FROM group_anomaly_policy_overrides
+        """).fetchall()
+
+    finally:
+        conn.close()
+
+    result = {}
+
+    for row in rows:
+
+        raw = _override_values_from_row(
+            row
+        )
+
+        try:
+            overrides = (
+                normalize_group_anomaly_overrides(
+                    raw
+                )
+            )
+
+            resolve_layered_anomaly_policy(
+                global_policy,
+                group_overrides=overrides,
+                miner_overrides={},
+            )
+
+        except ValueError:
+            continue
+
+        if overrides:
+            result[
+                int(row["group_id"])
+            ] = overrides
+
+    return result
+
+
+def load_miner_anomaly_overrides(
+    miner_id,
+    global_policy=None,
+    group_overrides=None,
+):
+    if global_policy is None:
+        global_policy = (
+            load_anomaly_policy()
+        )
+
+    if group_overrides is None:
+
+        group_id = _miner_group_id(
+            miner_id
+        )
+
+        group_overrides = (
+            load_group_anomaly_overrides(
+                group_id,
+                global_policy=global_policy,
+            )
+            if group_id is not None
+            else {}
         )
 
     conn = db()
@@ -133,35 +274,48 @@ def load_miner_anomaly_overrides(
             )
         )
 
-        # Validate the resulting effective policy too.
-        resolve_anomaly_policy(
+        resolve_layered_anomaly_policy(
             global_policy,
-            overrides,
+            group_overrides=group_overrides,
+            miner_overrides=overrides,
         )
 
         return overrides
 
     except ValueError:
-        # Only manual DB corruption should reach here.
-        # Keep anomaly detection operational by
-        # falling back to global inheritance.
+        # Corrupted/manual rows fall back to
+        # inherited GLOBAL/GROUP policy.
         return {}
 
 
 def load_anomaly_override_snapshot(
     global_policy=None,
+    group_snapshot=None,
 ):
     if global_policy is None:
         global_policy = (
             load_anomaly_policy()
         )
 
+    if group_snapshot is None:
+        group_snapshot = (
+            load_group_anomaly_override_snapshot(
+                global_policy
+            )
+        )
+
     conn = db()
 
     try:
         rows = conn.execute("""
-            SELECT *
-            FROM anomaly_policy_overrides
+            SELECT
+                apo.*,
+                m.group_id AS miner_group_id
+
+            FROM anomaly_policy_overrides apo
+
+            JOIN miners m
+                ON m.id=apo.miner_id
         """).fetchall()
 
     finally:
@@ -175,6 +329,16 @@ def load_anomaly_override_snapshot(
             row
         )
 
+        group_overrides = (
+            group_snapshot.get(
+                int(row["miner_group_id"]),
+                {},
+            )
+            if row["miner_group_id"]
+            is not None
+            else {}
+        )
+
         try:
             overrides = (
                 normalize_anomaly_overrides(
@@ -182,9 +346,10 @@ def load_anomaly_override_snapshot(
                 )
             )
 
-            resolve_anomaly_policy(
+            resolve_layered_anomaly_policy(
                 global_policy,
-                overrides,
+                group_overrides=group_overrides,
+                miner_overrides=overrides,
             )
 
         except ValueError:
@@ -211,12 +376,44 @@ def validate_global_policy_against_overrides(
         load_anomaly_policy()
     )
 
+    current_groups = (
+        load_group_anomaly_override_snapshot(
+            current_global
+        )
+    )
+
+    # A global update must keep every currently
+    # valid GROUP policy valid.
+    for group_id, group_overrides in (
+        current_groups.items()
+    ):
+
+        try:
+            resolve_layered_anomaly_policy(
+                normalized_global,
+                group_overrides=group_overrides,
+                miner_overrides={},
+            )
+
+        except ValueError as exc:
+            raise ValueError(
+                "Global anomaly policy conflicts "
+                "with overrides for group "
+                f"{group_id}: {exc}"
+            )
+
     conn = db()
 
     try:
         rows = conn.execute("""
-            SELECT *
-            FROM anomaly_policy_overrides
+            SELECT
+                apo.*,
+                m.group_id AS miner_group_id
+
+            FROM anomaly_policy_overrides apo
+
+            JOIN miners m
+                ON m.id=apo.miner_id
         """).fetchall()
 
     finally:
@@ -224,36 +421,45 @@ def validate_global_policy_against_overrides(
 
     for row in rows:
 
-        raw = _override_values_from_row(
-            row
+        try:
+            miner_overrides = (
+                normalize_anomaly_overrides(
+                    _override_values_from_row(
+                        row
+                    )
+                )
+            )
+
+        except ValueError:
+            continue
+
+        current_group = (
+            current_groups.get(
+                int(row["miner_group_id"]),
+                {},
+            )
+            if row["miner_group_id"]
+            is not None
+            else {}
         )
 
         try:
-            overrides = (
-                normalize_anomaly_overrides(
-                    raw
-                )
-            )
-        except ValueError:
-            # A manually corrupted row is already
-            # ignored by normal policy resolution.
-            continue
-
-        try:
-            resolve_anomaly_policy(
+            resolve_layered_anomaly_policy(
                 current_global,
-                overrides,
+                group_overrides=current_group,
+                miner_overrides=miner_overrides,
             )
+
         except ValueError:
-            # Likewise, do not let a row that is
-            # already invalid due to manual DB
-            # manipulation block global recovery.
+            # Already-corrupted/manual rows are
+            # ignored by normal resolution.
             continue
 
         try:
-            resolve_anomaly_policy(
+            resolve_layered_anomaly_policy(
                 normalized_global,
-                overrides,
+                group_overrides=current_group,
+                miner_overrides=miner_overrides,
             )
 
         except ValueError as exc:
@@ -264,6 +470,315 @@ def validate_global_policy_against_overrides(
             )
 
     return normalized_global
+
+
+def validate_group_policy_against_miner_overrides(
+    group_id,
+    group_overrides,
+):
+    global_policy = (
+        load_anomaly_policy()
+    )
+
+    normalized_group = (
+        normalize_group_anomaly_overrides(
+            group_overrides or {}
+        )
+    )
+
+    resolve_layered_anomaly_policy(
+        global_policy,
+        group_overrides=normalized_group,
+        miner_overrides={},
+    )
+
+    current_group = (
+        load_group_anomaly_overrides(
+            group_id,
+            global_policy=global_policy,
+        )
+    )
+
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT apo.*
+
+            FROM anomaly_policy_overrides apo
+
+            JOIN miners m
+                ON m.id=apo.miner_id
+
+            WHERE m.group_id=?
+        """, (
+            int(group_id),
+        )).fetchall()
+
+    finally:
+        conn.close()
+
+    for row in rows:
+
+        try:
+            miner_overrides = (
+                normalize_anomaly_overrides(
+                    _override_values_from_row(
+                        row
+                    )
+                )
+            )
+
+        except ValueError:
+            continue
+
+        try:
+            resolve_layered_anomaly_policy(
+                global_policy,
+                group_overrides=current_group,
+                miner_overrides=miner_overrides,
+            )
+
+        except ValueError:
+            # Existing manual corruption should not
+            # prevent recovery.
+            continue
+
+        try:
+            resolve_layered_anomaly_policy(
+                global_policy,
+                group_overrides=normalized_group,
+                miner_overrides=miner_overrides,
+            )
+
+        except ValueError as exc:
+            raise ValueError(
+                "Group anomaly policy conflicts "
+                "with overrides for miner "
+                f"{int(row['miner_id'])}: {exc}"
+            )
+
+    return normalized_group
+
+
+def validate_miner_group_policy_membership(
+    miner_id,
+    group_id,
+):
+    global_policy = (
+        load_anomaly_policy()
+    )
+
+    group_overrides = (
+        load_group_anomaly_overrides(
+            group_id,
+            global_policy=global_policy,
+        )
+        if group_id is not None
+        else {}
+    )
+
+    conn = db()
+
+    try:
+        row = conn.execute("""
+            SELECT *
+            FROM anomaly_policy_overrides
+            WHERE miner_id=?
+        """, (
+            int(miner_id),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+    try:
+        miner_overrides = (
+            normalize_anomaly_overrides(
+                _override_values_from_row(
+                    row
+                )
+            )
+        )
+
+    except ValueError:
+        # Corrupted miner overrides are already
+        # ignored by normal resolution.
+        miner_overrides = {}
+
+    try:
+        return resolve_layered_anomaly_policy(
+            global_policy,
+            group_overrides=group_overrides,
+            miner_overrides=miner_overrides,
+        )
+
+    except ValueError as exc:
+        target = (
+            f"group {int(group_id)}"
+            if group_id is not None
+            else "GLOBAL inheritance"
+        )
+
+        raise ValueError(
+            "Miner anomaly policy would become "
+            f"invalid under {target}: {exc}"
+        )
+
+
+def validate_group_policy_removal(
+    group_id,
+):
+    conn = db()
+
+    try:
+        rows = conn.execute("""
+            SELECT id
+            FROM miners
+            WHERE group_id=?
+            ORDER BY id
+        """, (
+            int(group_id),
+        )).fetchall()
+
+    finally:
+        conn.close()
+
+    for row in rows:
+
+        validate_miner_group_policy_membership(
+            int(row["id"]),
+            None,
+        )
+
+    return True
+
+
+def save_group_anomaly_overrides(
+    group_id,
+    overrides,
+    actor,
+    now=None,
+):
+    if now is None:
+        now = int(time.time())
+
+    normalized = (
+        validate_group_policy_against_miner_overrides(
+            group_id,
+            overrides,
+        )
+    )
+
+    conn = db()
+
+    try:
+
+        if not normalized:
+
+            conn.execute("""
+                DELETE FROM
+                    group_anomaly_policy_overrides
+                WHERE group_id=?
+            """, (
+                int(group_id),
+            ))
+
+        else:
+
+            conn.execute("""
+                INSERT INTO
+                    group_anomaly_policy_overrides
+                (
+                    group_id,
+                    offline_grace_seconds,
+                    hot_temp_c,
+                    hot_clear_c,
+                    hot_grace_seconds,
+                    schedule_grace_seconds,
+                    updated_by,
+                    updated_at
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?
+                )
+
+                ON CONFLICT(group_id)
+                DO UPDATE SET
+                    offline_grace_seconds=
+                        excluded.offline_grace_seconds,
+                    hot_temp_c=
+                        excluded.hot_temp_c,
+                    hot_clear_c=
+                        excluded.hot_clear_c,
+                    hot_grace_seconds=
+                        excluded.hot_grace_seconds,
+                    schedule_grace_seconds=
+                        excluded.schedule_grace_seconds,
+                    updated_by=
+                        excluded.updated_by,
+                    updated_at=
+                        excluded.updated_at
+            """, (
+                int(group_id),
+
+                normalized.get(
+                    "offline_grace_seconds"
+                ),
+
+                normalized.get(
+                    "hot_temp_c"
+                ),
+
+                normalized.get(
+                    "hot_clear_c"
+                ),
+
+                normalized.get(
+                    "hot_grace_seconds"
+                ),
+
+                normalized.get(
+                    "schedule_grace_seconds"
+                ),
+
+                str(actor),
+                int(now),
+            ))
+
+        conn.commit()
+
+    finally:
+        conn.close()
+
+    return normalized
+
+
+def clear_group_anomaly_overrides(
+    group_id,
+):
+    validate_group_policy_against_miner_overrides(
+        group_id,
+        {},
+    )
+
+    conn = db()
+
+    try:
+        cursor = conn.execute("""
+            DELETE FROM
+                group_anomaly_policy_overrides
+            WHERE group_id=?
+        """, (
+            int(group_id),
+        ))
+
+        conn.commit()
+
+        return cursor.rowcount > 0
+
+    finally:
+        conn.close()
 
 
 def save_miner_anomaly_overrides(
@@ -279,16 +794,29 @@ def save_miner_anomaly_overrides(
         load_anomaly_policy()
     )
 
+    group_id = _miner_group_id(
+        miner_id
+    )
+
+    group_overrides = (
+        load_group_anomaly_overrides(
+            group_id,
+            global_policy=global_policy,
+        )
+        if group_id is not None
+        else {}
+    )
+
     normalized = (
         normalize_anomaly_overrides(
             overrides
         )
     )
 
-    # Validate inherited + overridden values together.
-    resolve_anomaly_policy(
+    resolve_layered_anomaly_policy(
         global_policy,
-        normalized,
+        group_overrides=group_overrides,
+        miner_overrides=normalized,
     )
 
     conn = db()

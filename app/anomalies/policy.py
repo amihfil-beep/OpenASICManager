@@ -53,6 +53,11 @@ MINER_ANOMALY_OVERRIDE_FIELDS = (
 )
 
 
+GROUP_ANOMALY_OVERRIDE_FIELDS = (
+    MINER_ANOMALY_OVERRIDE_FIELDS
+)
+
+
 def normalize_temperature(value):
     try:
         return float(value) if value is not None else None
@@ -162,6 +167,36 @@ def normalize_anomaly_overrides(data):
     }
 
 
+def normalize_group_anomaly_overrides(
+    data,
+):
+    if not isinstance(data, dict):
+        raise ValueError(
+            "Group anomaly overrides must be an object"
+        )
+
+    unknown = sorted(
+        set(data)
+        -
+        set(GROUP_ANOMALY_OVERRIDE_FIELDS)
+    )
+
+    if unknown:
+        raise ValueError(
+            "Unknown group anomaly policy fields: "
+            + ", ".join(unknown)
+        )
+
+    return {
+        field: _normalize_policy_value(
+            field,
+            value,
+        )
+        for field, value in data.items()
+        if value is not None
+    }
+
+
 def resolve_anomaly_policy(
     global_policy,
     overrides=None,
@@ -178,6 +213,46 @@ def resolve_anomaly_policy(
 
     effective.update(
         normalized_overrides
+    )
+
+    return normalize_anomaly_policy(
+        effective
+    )
+
+
+def resolve_layered_anomaly_policy(
+    global_policy,
+    group_overrides=None,
+    miner_overrides=None,
+):
+    effective = normalize_anomaly_policy(
+        dict(global_policy)
+    )
+
+    normalized_group = (
+        normalize_group_anomaly_overrides(
+            group_overrides or {}
+        )
+    )
+
+    effective.update(
+        normalized_group
+    )
+
+    # GROUP policy must itself remain a valid
+    # effective policy for members that inherit it.
+    effective = normalize_anomaly_policy(
+        effective
+    )
+
+    normalized_miner = (
+        normalize_anomaly_overrides(
+            miner_overrides or {}
+        )
+    )
+
+    effective.update(
+        normalized_miner
     )
 
     return normalize_anomaly_policy(
@@ -242,6 +317,67 @@ def apply_anomaly_override_patch(
     return merged, effective
 
 
+def apply_group_anomaly_override_patch(
+    global_policy,
+    current_overrides,
+    patch,
+):
+    if not isinstance(patch, dict):
+        raise ValueError(
+            "Group anomaly overrides must be an object"
+        )
+
+    if not patch:
+        raise ValueError(
+            "At least one group anomaly override "
+            "field is required"
+        )
+
+    unknown = sorted(
+        set(patch)
+        -
+        set(GROUP_ANOMALY_OVERRIDE_FIELDS)
+    )
+
+    if unknown:
+        raise ValueError(
+            "Unknown group anomaly policy fields: "
+            + ", ".join(unknown)
+        )
+
+    merged = dict(
+        normalize_group_anomaly_overrides(
+            current_overrides or {}
+        )
+    )
+
+    for field, value in patch.items():
+
+        if value is None:
+            merged.pop(
+                field,
+                None,
+            )
+
+        else:
+            merged[field] = (
+                _normalize_policy_value(
+                    field,
+                    value,
+                )
+            )
+
+    effective = (
+        resolve_layered_anomaly_policy(
+            global_policy,
+            group_overrides=merged,
+            miner_overrides={},
+        )
+    )
+
+    return merged, effective
+
+
 def anomaly_policy_sources(
     overrides,
 ):
@@ -260,6 +396,38 @@ def anomaly_policy_sources(
         for field
         in ANOMALY_POLICY_FIELDS
     }
+
+
+def layered_anomaly_policy_sources(
+    group_overrides,
+    miner_overrides,
+):
+    normalized_group = (
+        normalize_group_anomaly_overrides(
+            group_overrides or {}
+        )
+    )
+
+    normalized_miner = (
+        normalize_anomaly_overrides(
+            miner_overrides or {}
+        )
+    )
+
+    result = {}
+
+    for field in ANOMALY_POLICY_FIELDS:
+
+        if field in normalized_miner:
+            result[field] = "MINER"
+
+        elif field in normalized_group:
+            result[field] = "GROUP"
+
+        else:
+            result[field] = "GLOBAL"
+
+    return result
 
 
 def offline_observed(state, active_control_action):
@@ -314,11 +482,16 @@ __all__ = (
     "ANOMALY_POLICY_FIELDS",
     "ANOMALY_POLICY_LIMITS",
     "MINER_ANOMALY_OVERRIDE_FIELDS",
+    "GROUP_ANOMALY_OVERRIDE_FIELDS",
     "normalize_anomaly_policy",
     "normalize_anomaly_overrides",
+    "normalize_group_anomaly_overrides",
     "resolve_anomaly_policy",
+    "resolve_layered_anomaly_policy",
     "apply_anomaly_override_patch",
+    "apply_group_anomaly_override_patch",
     "anomaly_policy_sources",
+    "layered_anomaly_policy_sources",
     "normalize_temperature",
     "offline_observed",
     "overheat_observed",

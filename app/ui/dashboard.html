@@ -2444,6 +2444,148 @@ a:hover {
 </div>
 
 
+<div
+    id="groupAnomalyPolicyBackdrop"
+    class="modal-backdrop"
+    onclick="groupAnomalyPolicyBackdropClick(event)"
+>
+
+<div
+    class="history-modal"
+    onclick="event.stopPropagation()"
+    style="max-width:1050px"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2
+                id="groupAnomalyPolicyTitle"
+                style="margin:0"
+            >
+                Group Alert Policy
+            </h2>
+
+            <div
+                class="muted"
+                style="margin-top:5px"
+            >
+                Group anomaly settings inherit GLOBAL values
+                unless explicitly overridden here.
+                Member-level MINER overrides still take precedence.
+                These settings affect anomaly detection only
+                and never directly control ASICs.
+            </div>
+
+        </div>
+
+        <button
+            class="close-button"
+            onclick="closeGroupAnomalyPolicy()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div
+        id="groupAnomalyPolicyInterval"
+        class="muted small"
+        style="margin-bottom:14px"
+    >
+        Scan interval is global only.
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table style="min-width:820px">
+
+            <thead>
+                <tr>
+                    <th>Setting</th>
+                    <th>Source</th>
+                    <th>Global</th>
+                    <th>Effective</th>
+                    <th>Group override</th>
+                </tr>
+            </thead>
+
+            <tbody
+                id="groupAnomalyPolicyRows"
+            >
+                <tr>
+                    <td colspan="5">
+                        Loading...
+                    </td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    <div
+        id="groupAnomalyPolicyStatus"
+        class="muted small"
+        style="margin-top:14px"
+    ></div>
+
+
+    <div
+        class="schedule-rule-form-actions"
+        style="
+            margin-top:18px;
+            justify-content:space-between;
+        "
+    >
+
+        <div>
+
+            <button
+                class="warning-button"
+                onclick="clearGroupAnomalyPolicy()"
+            >
+                INHERIT ALL
+            </button>
+
+        </div>
+
+
+        <div
+            style="
+                display:flex;
+                gap:8px;
+            "
+        >
+
+            <button
+                class="secondary"
+                onclick="closeGroupAnomalyPolicy()"
+            >
+                CANCEL
+            </button>
+
+            <button
+                id="groupAnomalyPolicySaveButton"
+                class="start"
+                onclick="saveGroupAnomalyPolicy()"
+            >
+                SAVE
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+</div>
+
+
 <div class="table-wrap">
 
 <table class="miner-table">
@@ -3037,8 +3179,9 @@ a:hover {
                 style="margin-top:5px"
             >
                 Per-ASIC anomaly settings.
-                GLOBAL means the current global value is inherited.
-                OVERRIDE means this ASIC keeps its own value.
+                Values resolve in deterministic order:
+                GLOBAL → GROUP → MINER.
+                MINER means this ASIC keeps its own explicit value.
                 These settings affect anomaly detection only and
                 never directly control the ASIC.
             </div>
@@ -3076,8 +3219,9 @@ a:hover {
                     <th>Setting</th>
                     <th>Source</th>
                     <th>Global</th>
+                    <th>Group</th>
                     <th>Effective</th>
-                    <th>Override</th>
+                    <th>Miner override</th>
                 </tr>
 
             </thead>
@@ -3086,7 +3230,7 @@ a:hover {
                 id="minerAnomalyPolicyRows"
             >
                 <tr>
-                    <td colspan="5">
+                    <td colspan="6">
                         Loading...
                     </td>
                 </tr>
@@ -7667,23 +7811,35 @@ function minerAnomalyPolicyButtonHTML(
         if (count > 0) {
 
             label =
-                "OVERRIDE "
+                "MINER "
                 +
                 count;
 
             title =
                 count
                 +
-                " anomaly policy override(s)";
+                " explicit MINER anomaly policy override(s)";
         }
 
         else {
 
             label =
-                "GLOBAL";
+                miner.group_id
+                ? "GROUP"
+                : "GLOBAL";
 
             title =
-                "All anomaly policy fields inherited";
+                miner.group_id
+                ? (
+                    "No MINER overrides; "
+                    +
+                    "GROUP/GLOBAL inheritance"
+                )
+                : (
+                    "All anomaly policy fields "
+                    +
+                    "inherit GLOBAL"
+                );
         }
     }
 
@@ -7757,6 +7913,7 @@ function renderMinerAnomalyPolicy(
             ).sort()
     };
 
+
     const rows =
         document.getElementById(
             "minerAnomalyPolicyRows"
@@ -7774,9 +7931,22 @@ function renderMinerAnomalyPolicy(
         data.global_policy
         || {};
 
+    const groupPolicy =
+        data.group_policy
+        || globalPolicy;
+
     const effectivePolicy =
         data.effective_policy
         || {};
+
+    const hasGroup =
+        (
+            data.group_id
+            !== null
+            &&
+            data.group_id
+            !== undefined
+        );
 
 
     rows.innerHTML =
@@ -7787,14 +7957,18 @@ function renderMinerAnomalyPolicy(
                 const field =
                     definition.field;
 
-                const isOverride =
+                const source =
                     sources[field]
-                    === "OVERRIDE";
+                    || "GLOBAL";
+
+                const isMinerOverride =
+                    source === "MINER";
 
                 const inputValue =
-                    isOverride
+                    isMinerOverride
                     ? overrides[field]
                     : effectivePolicy[field];
+
 
                 return `
                     <tr>
@@ -7807,11 +7981,7 @@ function renderMinerAnomalyPolicy(
 
                         <td>
                             <strong>
-                                ${
-                                    isOverride
-                                    ? "OVERRIDE"
-                                    : "GLOBAL"
-                                }
+                                ${esc(source)}
                             </strong>
                         </td>
 
@@ -7820,6 +7990,17 @@ function renderMinerAnomalyPolicy(
                                 globalPolicy[field],
                                 definition.unit
                             )}
+                        </td>
+
+                        <td>
+                            ${
+                                hasGroup
+                                ? minerAnomalyPolicyValue(
+                                    groupPolicy[field],
+                                    definition.unit
+                                )
+                                : "—"
+                            }
                         </td>
 
                         <td>
@@ -7843,7 +8024,7 @@ function renderMinerAnomalyPolicy(
                                     id="minerPolicyOverride_${field}"
                                     type="checkbox"
                                     ${
-                                        isOverride
+                                        isMinerOverride
                                         ? "checked"
                                         : ""
                                     }
@@ -7862,7 +8043,7 @@ function renderMinerAnomalyPolicy(
                                     step="${definition.step}"
                                     value="${esc(inputValue)}"
                                     ${
-                                        isOverride
+                                        isMinerOverride
                                         ? ""
                                         : "disabled"
                                     }
@@ -7891,20 +8072,46 @@ function renderMinerAnomalyPolicy(
             data.global_policy.interval_seconds
             +
             " s · GLOBAL ONLY"
+            +
+            (
+                hasGroup
+                ? (
+                    " · Group: "
+                    +
+                    data.group_name
+                )
+                : (
+                    " · Ungrouped"
+                )
+            )
         );
+
+
+    const overrideCount =
+        Object.keys(
+            overrides
+        ).length;
 
 
     document.getElementById(
         "minerAnomalyPolicyStatus"
     ).textContent =
         (
-            Object.keys(
-                overrides
-            ).length
+            overrideCount
             +
-            " explicit override(s). "
+            " explicit MINER override(s). "
             +
-            "Unchecked fields inherit the global policy."
+            (
+                hasGroup
+                ? (
+                    "Unchecked fields inherit GROUP policy "
+                    +
+                    "where configured, otherwise GLOBAL."
+                )
+                : (
+                    "Unchecked fields inherit GLOBAL policy."
+                )
+            )
         );
 }
 
@@ -8290,9 +8497,13 @@ async function clearMinerAnomalyPolicy() {
 
     if (
         !confirm(
-            "Return all anomaly policy fields "
+            "Clear all explicit MINER anomaly policy "
             +
-            "for this ASIC to GLOBAL inheritance?"
+            "overrides for this ASIC?\n\n"
+            +
+            "The ASIC will inherit GROUP policy where "
+            +
+            "configured, otherwise GLOBAL."
         )
     ) {
         return;
@@ -8342,7 +8553,11 @@ async function clearMinerAnomalyPolicy() {
         loadStatus();
 
         status.textContent =
-            "All fields now inherit GLOBAL policy.";
+            (
+                "All explicit MINER overrides cleared. "
+                +
+                "Fields now inherit GROUP/GLOBAL policy."
+            );
 
     }
 
@@ -11201,6 +11416,701 @@ window.addEventListener(
 
 
 // ============================================================
+// GROUP ANOMALY POLICY
+// ============================================================
+
+window.__groupAnomalyPolicyEditingId =
+    null;
+
+window.__groupAnomalyPolicyCache =
+    window.__groupAnomalyPolicyCache
+    || {};
+
+
+function renderGroupAnomalyPolicy(
+    data
+) {
+
+    window.__groupAnomalyPolicyCache[
+        String(data.group_id)
+    ] = data;
+
+
+    const rows =
+        document.getElementById(
+            "groupAnomalyPolicyRows"
+        );
+
+    const sources =
+        data.sources
+        || {};
+
+    const overrides =
+        data.overrides
+        || {};
+
+    const globalPolicy =
+        data.global_policy
+        || {};
+
+    const effectivePolicy =
+        data.effective_policy
+        || {};
+
+
+    rows.innerHTML =
+        MINER_ANOMALY_POLICY_FIELDS
+        .map(
+            definition => {
+
+                const field =
+                    definition.field;
+
+                const isGroupOverride =
+                    sources[field]
+                    === "GROUP";
+
+                const inputValue =
+                    isGroupOverride
+                    ? overrides[field]
+                    : effectivePolicy[field];
+
+
+                return `
+                    <tr>
+
+                        <td>
+                            ${esc(
+                                definition.label
+                            )}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${
+                                    isGroupOverride
+                                    ? "GROUP"
+                                    : "GLOBAL"
+                                }
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${minerAnomalyPolicyValue(
+                                globalPolicy[field],
+                                definition.unit
+                            )}
+                        </td>
+
+                        <td>
+                            ${minerAnomalyPolicyValue(
+                                effectivePolicy[field],
+                                definition.unit
+                            )}
+                        </td>
+
+                        <td>
+
+                            <label
+                                style="
+                                    display:flex;
+                                    align-items:center;
+                                    gap:8px;
+                                "
+                            >
+
+                                <input
+                                    id="groupPolicyOverride_${field}"
+                                    type="checkbox"
+                                    ${
+                                        isGroupOverride
+                                        ? "checked"
+                                        : ""
+                                    }
+                                    onchange="
+                                        groupAnomalyPolicyOverrideChanged(
+                                            '${field}'
+                                        )
+                                    "
+                                >
+
+                                <input
+                                    id="groupPolicyValue_${field}"
+                                    type="number"
+                                    min="${definition.min}"
+                                    max="${definition.max}"
+                                    step="${definition.step}"
+                                    value="${esc(inputValue)}"
+                                    ${
+                                        isGroupOverride
+                                        ? ""
+                                        : "disabled"
+                                    }
+                                    style="
+                                        width:120px;
+                                    "
+                                >
+
+                            </label>
+
+                        </td>
+
+                    </tr>
+                `;
+            }
+        )
+        .join("");
+
+
+    document.getElementById(
+        "groupAnomalyPolicyInterval"
+    ).textContent =
+        (
+            "Scan interval: "
+            +
+            data.global_policy.interval_seconds
+            +
+            " s · GLOBAL ONLY"
+        );
+
+
+    document.getElementById(
+        "groupAnomalyPolicyStatus"
+    ).textContent =
+        (
+            Object.keys(
+                overrides
+            ).length
+            +
+            " explicit GROUP override(s). "
+            +
+            "Unchecked fields inherit GLOBAL policy. "
+            +
+            "MINER overrides remain higher priority."
+        );
+}
+
+
+function groupAnomalyPolicyOverrideChanged(
+    field
+) {
+
+    const checkbox =
+        document.getElementById(
+            "groupPolicyOverride_"
+            + field
+        );
+
+    const input =
+        document.getElementById(
+            "groupPolicyValue_"
+            + field
+        );
+
+
+    if (
+        !checkbox
+        ||
+        !input
+    ) {
+        return;
+    }
+
+
+    input.disabled =
+        !checkbox.checked;
+
+
+    if (
+        checkbox.checked
+        &&
+        input.value === ""
+    ) {
+
+        const groupId =
+            window.__groupAnomalyPolicyEditingId;
+
+        const cached =
+            window.__groupAnomalyPolicyCache[
+                String(groupId)
+            ];
+
+
+        if (
+            cached
+            &&
+            cached.effective_policy
+        ) {
+
+            input.value =
+                cached.effective_policy[
+                    field
+                ];
+        }
+    }
+}
+
+
+function groupAnomalyPolicyPayload() {
+
+    const payload = {};
+
+
+    for (
+        const definition
+        of MINER_ANOMALY_POLICY_FIELDS
+    ) {
+
+        const field =
+            definition.field;
+
+        const checkbox =
+            document.getElementById(
+                "groupPolicyOverride_"
+                + field
+            );
+
+        const input =
+            document.getElementById(
+                "groupPolicyValue_"
+                + field
+            );
+
+
+        if (
+            !checkbox
+            ||
+            !input
+        ) {
+
+            throw new Error(
+                "Group policy form is incomplete"
+            );
+        }
+
+
+        if (!checkbox.checked) {
+
+            payload[field] =
+                null;
+
+            continue;
+        }
+
+
+        if (input.value === "") {
+
+            throw new Error(
+                definition.label
+                +
+                " requires a value"
+            );
+        }
+
+
+        payload[field] =
+            Number(
+                input.value
+            );
+    }
+
+
+    return payload;
+}
+
+
+async function openGroupAnomalyPolicy(
+    groupId
+) {
+
+    window.__groupAnomalyPolicyEditingId =
+        Number(
+            groupId
+        );
+
+
+    const group =
+        minerGroupList().find(
+            item =>
+                Number(item.id)
+                ===
+                Number(groupId)
+        );
+
+
+    document.getElementById(
+        "groupAnomalyPolicyTitle"
+    ).textContent =
+        (
+            "Group Alert Policy"
+            +
+            (
+                group
+                ? (
+                    " · "
+                    +
+                    group.name
+                )
+                : (
+                    " · Group #"
+                    +
+                    groupId
+                )
+            )
+        );
+
+
+    document.getElementById(
+        "groupAnomalyPolicyRows"
+    ).innerHTML =
+        `
+            <tr>
+                <td colspan="5">
+                    Loading...
+                </td>
+            </tr>
+        `;
+
+
+    document.getElementById(
+        "groupAnomalyPolicyStatus"
+    ).textContent =
+        "Loading group alert policy...";
+
+
+    document.getElementById(
+        "groupAnomalyPolicyBackdrop"
+    ).classList.add(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miner-groups/"
+                +
+                Number(groupId)
+                +
+                "/anomaly-policy"
+            );
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Group alert policy request failed"
+            );
+        }
+
+
+        renderGroupAnomalyPolicy(
+            data
+        );
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "groupAnomalyPolicyStatus"
+        ).textContent =
+            (
+                "Group alert policy error: "
+                +
+                error.message
+            );
+    }
+}
+
+
+function closeGroupAnomalyPolicy() {
+
+    window.__groupAnomalyPolicyEditingId =
+        null;
+
+
+    document.getElementById(
+        "groupAnomalyPolicyBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function groupAnomalyPolicyBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        ===
+        "groupAnomalyPolicyBackdrop"
+    ) {
+
+        closeGroupAnomalyPolicy();
+    }
+}
+
+
+async function saveGroupAnomalyPolicy() {
+
+    const groupId =
+        window.__groupAnomalyPolicyEditingId;
+
+    if (!groupId) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "groupAnomalyPolicyStatus"
+        );
+
+    const button =
+        document.getElementById(
+            "groupAnomalyPolicySaveButton"
+        );
+
+
+    button.disabled =
+        true;
+
+    status.textContent =
+        "Saving group alert policy...";
+
+
+    try {
+
+        const payload =
+            groupAnomalyPolicyPayload();
+
+
+        const response =
+            await fetch(
+                "/api/miner-groups/"
+                +
+                Number(groupId)
+                +
+                "/anomaly-policy",
+                {
+                    method:
+                        "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Group alert policy update failed"
+            );
+        }
+
+
+        renderGroupAnomalyPolicy(
+            data
+        );
+
+
+        window.__minerAnomalyPolicyCache =
+            {};
+
+        window.__minerAnomalyPolicySummaryLoaded =
+            false;
+
+
+        await loadMinerAnomalyPolicySummary();
+
+        await loadStatus();
+
+        await loadLogs();
+
+
+        status.textContent =
+            (
+                "Saved. GROUP anomaly policy "
+                +
+                "is active without a service restart."
+            );
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "Group alert policy error: "
+                +
+                error.message
+            );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+async function clearGroupAnomalyPolicy() {
+
+    const groupId =
+        window.__groupAnomalyPolicyEditingId;
+
+    if (!groupId) {
+        return;
+    }
+
+
+    if (
+        !confirm(
+            "Clear all GROUP anomaly policy overrides?\\n\\n"
+            +
+            "Members without MINER overrides will "
+            +
+            "inherit GLOBAL policy."
+        )
+    ) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "groupAnomalyPolicyStatus"
+        );
+
+
+    status.textContent =
+        "Clearing GROUP anomaly policy overrides...";
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miner-groups/"
+                +
+                Number(groupId)
+                +
+                "/anomaly-policy",
+                {
+                    method:
+                        "DELETE"
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Group alert policy clear failed"
+            );
+        }
+
+
+        renderGroupAnomalyPolicy(
+            data
+        );
+
+
+        window.__minerAnomalyPolicyCache =
+            {};
+
+        window.__minerAnomalyPolicySummaryLoaded =
+            false;
+
+
+        await loadMinerAnomalyPolicySummary();
+
+        await loadStatus();
+
+        await loadLogs();
+
+
+        status.textContent =
+            (
+                "All GROUP overrides cleared. "
+                +
+                "Fields now inherit GLOBAL policy."
+            );
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "Group alert policy error: "
+                +
+                error.message
+            );
+    }
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            document.getElementById(
+                "groupAnomalyPolicyBackdrop"
+            )
+            ?.classList.contains(
+                "open"
+            )
+        ) {
+
+            closeGroupAnomalyPolicy();
+        }
+    }
+);
+
+
+
+// ============================================================
 // MINER GROUPS
 // ============================================================
 
@@ -11456,6 +12366,17 @@ function renderMinerGroupRows() {
                 </td>
 
                 <td>
+
+                    <button
+                        class="secondary mini"
+                        onclick="
+                            openGroupAnomalyPolicy(
+                                ${Number(group.id)}
+                            )
+                        "
+                    >
+                        ALERT POLICY
+                    </button>
 
                     <button
                         class="secondary mini"

@@ -207,6 +207,14 @@ def delete_group(group_id):
         )).fetchone()["count"]
 
         conn.execute("""
+            DELETE FROM
+                group_anomaly_policy_overrides
+            WHERE group_id=?
+        """, (
+            int(group_id),
+        ))
+
+        conn.execute("""
             UPDATE miners
             SET group_id=NULL
             WHERE group_id=?

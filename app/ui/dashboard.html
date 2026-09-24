@@ -3503,6 +3503,8 @@ a:hover {
 
             <div class="muted">
                 Planned, time-bounded anomaly suppression.
+                GROUP scope captures an immutable ASIC snapshot
+                when the window is created.
                 Telemetry and ASIC control remain independent.
             </div>
 
@@ -3552,6 +3554,10 @@ a:hover {
                     <option value="MINER">
                         Single ASIC
                     </option>
+
+                    <option value="GROUP">
+                        ASIC group snapshot
+                    </option>
                 </select>
 
             </div>
@@ -3565,6 +3571,21 @@ a:hover {
 
                 <select
                     id="maintenanceMiner"
+                    disabled
+                >
+                </select>
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="maintenanceGroup">
+                    Group
+                </label>
+
+                <select
+                    id="maintenanceGroup"
                     disabled
                 >
                 </select>
@@ -3655,6 +3676,41 @@ a:hover {
     </div>
 
 
+    <div
+        class="history-controls"
+        style="margin-bottom:12px"
+    >
+
+        <span class="muted">
+            Group view:
+        </span>
+
+        <select
+            id="maintenanceGroupFilter"
+            onchange="
+                renderMaintenance(
+                    window.__maintenanceState
+                    || {}
+                )
+            "
+        >
+            <option value="all">
+                All groups
+            </option>
+
+            <option value="ungrouped">
+                Ungrouped
+            </option>
+        </select>
+
+        <span class="muted small">
+            FARM windows remain visible because they apply
+            to every group.
+        </span>
+
+    </div>
+
+
     <div class="table-wrap">
 
         <table style="min-width:1080px">
@@ -3724,6 +3780,40 @@ a:hover {
 
 
     <div
+        class="history-controls"
+        style="margin-bottom:12px"
+    >
+
+        <span class="muted">
+            Group:
+        </span>
+
+        <select
+            id="issuesGroupFilter"
+            onchange="
+                renderIssues(
+                    window.__issuesState
+                    || {
+                        active_count: 0,
+                        active: [],
+                        recent_resolved: []
+                    }
+                )
+            "
+        >
+            <option value="all">
+                All groups
+            </option>
+
+            <option value="ungrouped">
+                Ungrouped
+            </option>
+        </select>
+
+    </div>
+
+
+    <div
         id="issuesStatus"
         class="history-status"
     >
@@ -3746,6 +3836,7 @@ a:hover {
                         <th>Severity</th>
                         <th>ASIC</th>
                         <th>IP</th>
+                        <th>Group</th>
                         <th>Issue</th>
                         <th>Since</th>
                         <th>Acknowledgement</th>
@@ -3780,6 +3871,7 @@ a:hover {
                     <tr>
                         <th>ASIC</th>
                         <th>IP</th>
+                        <th>Group</th>
                         <th>Issue</th>
                         <th>Started</th>
                         <th>Resolved</th>
@@ -6118,6 +6210,204 @@ function setMaintenanceDefaultTimes() {
 }
 
 
+function operationalGroupFilterOptions(
+    current
+) {
+
+    const groups =
+        minerGroupList();
+
+    let html = `
+        <option value="all">
+            All groups
+        </option>
+
+        <option value="ungrouped">
+            Ungrouped
+        </option>
+    `;
+
+
+    for (
+        const group
+        of groups
+    ) {
+
+        html += `
+            <option
+                value="${Number(group.id)}"
+                ${
+                    String(group.id)
+                    === String(current)
+                    ? "selected"
+                    : ""
+                }
+            >
+                ${esc(group.name)}
+            </option>
+        `;
+    }
+
+
+    return html;
+}
+
+
+function renderOperationalGroupFilters() {
+
+    for (
+        const id
+        of [
+            "maintenanceGroupFilter",
+            "issuesGroupFilter",
+        ]
+    ) {
+
+        const element =
+            document.getElementById(
+                id
+            );
+
+        if (!element) {
+            continue;
+        }
+
+
+        const current =
+            element.value
+            || "all";
+
+
+        element.innerHTML =
+            operationalGroupFilterOptions(
+                current
+            );
+
+
+        const valid =
+            current === "all"
+            ||
+            current === "ungrouped"
+            ||
+            minerGroupList().some(
+                group =>
+                    String(group.id)
+                    === String(current)
+            );
+
+
+        element.value =
+            valid
+            ? current
+            : "all";
+    }
+
+
+    if (
+        window.__maintenanceState
+    ) {
+
+        renderMaintenance(
+            window.__maintenanceState
+        );
+    }
+
+
+    if (
+        window.__issuesState
+    ) {
+
+        renderIssues(
+            window.__issuesState
+        );
+    }
+}
+
+
+function operationalGroupMatches(
+    groupId,
+    filterValue
+) {
+
+    const value =
+        String(
+            filterValue
+            || "all"
+        );
+
+
+    if (value === "all") {
+        return true;
+    }
+
+
+    if (value === "ungrouped") {
+
+        return (
+            groupId === null
+            ||
+            groupId === undefined
+        );
+    }
+
+
+    return (
+        Number(groupId)
+        ===
+        Number(value)
+    );
+}
+
+
+function maintenancePopulateGroups() {
+
+    const select =
+        document.getElementById(
+            "maintenanceGroup"
+        );
+
+
+    if (!select) {
+        return;
+    }
+
+
+    const groups =
+        minerGroupList();
+
+
+    if (!groups.length) {
+
+        select.innerHTML = `
+            <option value="">
+                No groups configured
+            </option>
+        `;
+
+        return;
+    }
+
+
+    select.innerHTML =
+        groups.map(
+            group => `
+                <option
+                    value="${Number(group.id)}"
+                >
+                    ${esc(group.name)}
+                    ·
+                    ${Number(
+                        group.member_count
+                        || 0
+                    )}
+                    ASIC(s)
+                </option>
+            `
+        ).join("");
+}
+
+
+
 function maintenancePopulateMiners() {
 
     const select =
@@ -6172,10 +6462,17 @@ function maintenanceScopeChanged() {
             "maintenanceScope"
         ).value;
 
+
     document.getElementById(
         "maintenanceMiner"
     ).disabled =
         scope !== "MINER";
+
+
+    document.getElementById(
+        "maintenanceGroup"
+    ).disabled =
+        scope !== "GROUP";
 }
 
 
@@ -6199,6 +6496,20 @@ function maintenanceWindowsForMiner(
                 &&
                 Number(item.miner_id)
                 === Number(minerId)
+            )
+            ||
+            (
+                item.scope === "GROUP"
+                &&
+                Array.isArray(
+                    item.member_ids
+                )
+                &&
+                item.member_ids.some(
+                    memberId =>
+                        Number(memberId)
+                        === Number(minerId)
+                )
             )
     );
 }
@@ -6224,10 +6535,26 @@ function maintenanceBadgeHTML(
                 ${
                     item.scope === "FARM"
                     ? "FARM MAINT"
-                    : "MAINT"
+                    : (
+                        item.scope === "GROUP"
+                        ? "GROUP MAINT"
+                        : "MAINT"
+                    )
                 }
 
                 <span class="maintenance-badge-detail">
+                    ${
+                        item.scope === "GROUP"
+                        ? (
+                            esc(
+                                item.group_name
+                                || "Group snapshot"
+                            )
+                            +
+                            " · "
+                        )
+                        : ""
+                    }
                     until
                     ${esc(
                         maintenanceTime(
@@ -6304,6 +6631,49 @@ function maintenanceActionHTML(
 }
 
 
+function maintenanceMatchesGroupFilter(
+    item,
+    filterValue
+) {
+
+    if (
+        String(filterValue || "all")
+        === "all"
+    ) {
+        return true;
+    }
+
+
+    if (item.scope === "FARM") {
+
+        // FARM applies to every group.
+        return true;
+    }
+
+
+    if (item.scope === "GROUP") {
+
+        if (
+            String(filterValue)
+            === "ungrouped"
+        ) {
+            return false;
+        }
+
+        return operationalGroupMatches(
+            item.group_id,
+            filterValue
+        );
+    }
+
+
+    return operationalGroupMatches(
+        item.miner_group_id,
+        filterValue
+    );
+}
+
+
 function renderMaintenance(data) {
 
     window.__maintenanceState =
@@ -6359,11 +6729,29 @@ function renderMaintenance(data) {
         + scheduled.length
         + " scheduled";
 
+    const groupFilter =
+        (
+            document.getElementById(
+                "maintenanceGroupFilter"
+            )
+            ?.value
+            ||
+            "all"
+        );
+
+
     const rows = [
         ...active,
         ...scheduled,
         ...recent.slice(0, 25),
-    ];
+    ].filter(
+        item =>
+            maintenanceMatchesGroupFilter(
+                item,
+                groupFilter
+            )
+    );
+
 
     if (!rows.length) {
 
@@ -6390,9 +6778,35 @@ function renderMaintenance(data) {
                     item.scope === "FARM"
                     ? "Entire farm"
                     : (
-                        item.miner_name
-                        || item.miner_ip
-                        || ("ASIC #" + item.miner_id)
+                        item.scope === "GROUP"
+                        ? (
+                            (
+                                item.group_name
+                                || (
+                                    "Group #"
+                                    +
+                                    item.group_id
+                                )
+                            )
+                            +
+                            " · snapshot "
+                            +
+                            Number(
+                                item.member_count
+                                || 0
+                            )
+                            +
+                            " ASIC(s)"
+                        )
+                        : (
+                            item.miner_name
+                            || item.miner_ip
+                            || (
+                                "ASIC #"
+                                +
+                                item.miner_id
+                            )
+                        )
                     );
 
                 return `
@@ -6543,6 +6957,8 @@ function openMaintenance() {
     maintenanceOpen = true;
 
     maintenancePopulateMiners();
+    maintenancePopulateGroups();
+    renderOperationalGroupFilters();
     setMaintenanceDefaultTimes();
     maintenanceScopeChanged();
 
@@ -6665,6 +7081,35 @@ async function createMaintenanceWindow() {
         payload.miner_id =
             minerId;
     }
+
+
+    if (scope === "GROUP") {
+
+        const groupId =
+            Number(
+                document.getElementById(
+                    "maintenanceGroup"
+                ).value
+            );
+
+
+        if (
+            !Number.isInteger(groupId)
+            ||
+            groupId <= 0
+        ) {
+
+            status.textContent =
+                "Select a group.";
+
+            return;
+        }
+
+
+        payload.group_id =
+            groupId;
+    }
+
 
     status.textContent =
         "Creating maintenance window...";
@@ -6908,6 +7353,8 @@ function issueTime(value) {
 function openIssues() {
 
     issuesOpen = true;
+
+    renderOperationalGroupFilters();
 
 
     document.getElementById(
@@ -7240,9 +7687,68 @@ async function unacknowledgeIssue(
 }
 
 
+function issueMatchesGroupFilter(
+    issue,
+    filterValue
+) {
+
+    return operationalGroupMatches(
+        issue.group_id,
+        filterValue
+    );
+}
+
+
 function renderIssues(
     data
 ) {
+
+    window.__issuesState =
+        data;
+
+
+    const groupFilter =
+        (
+            document.getElementById(
+                "issuesGroupFilter"
+            )
+            ?.value
+            ||
+            "all"
+        );
+
+
+    const activeIssues =
+        (
+            Array.isArray(
+                data.active
+            )
+            ? data.active
+            : []
+        ).filter(
+            issue =>
+                issueMatchesGroupFilter(
+                    issue,
+                    groupFilter
+                )
+        );
+
+
+    const resolvedIssues =
+        (
+            Array.isArray(
+                data.recent_resolved
+            )
+            ? data.recent_resolved
+            : []
+        ).filter(
+            issue =>
+                issueMatchesGroupFilter(
+                    issue,
+                    groupFilter
+                )
+        );
+
 
     const button =
         document.getElementById(
@@ -7285,7 +7791,7 @@ function renderIssues(
 
 
     if (
-        data.active_count === 0
+        activeIssues.length === 0
     ) {
 
         status.innerHTML =
@@ -7299,8 +7805,8 @@ function renderIssues(
 
         status.innerHTML =
             '<span class="issue-critical">'
-            + data.active_count
-            + ' active issue(s)'
+            + activeIssues.length
+            + ' active issue(s) in this group view'
             + '</span>';
     }
 
@@ -7312,12 +7818,12 @@ function renderIssues(
 
 
     if (
-        !data.active.length
+        !activeIssues.length
     ) {
 
         activeBody.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="9">
                     No active issues.
                 </td>
             </tr>
@@ -7332,7 +7838,7 @@ function renderIssues(
 
         for (
             const issue
-            of data.active
+            of activeIssues
         ) {
 
             const severityClass =
@@ -7359,6 +7865,13 @@ function renderIssues(
 
                     <td>
                         ${esc(issue.ip)}
+                    </td>
+
+                    <td>
+                        ${esc(
+                            issue.group_name
+                            || "Ungrouped"
+                        )}
                     </td>
 
                     <td>
@@ -7412,12 +7925,12 @@ function renderIssues(
 
 
     if (
-        !data.recent_resolved.length
+        !resolvedIssues.length
     ) {
 
         resolvedBody.innerHTML = `
             <tr>
-                <td colspan="7">
+                <td colspan="8">
                     No resolved issues recorded.
                 </td>
             </tr>
@@ -7432,7 +7945,7 @@ function renderIssues(
 
         for (
             const issue
-            of data.recent_resolved
+            of resolvedIssues
         ) {
 
             html += `
@@ -7446,6 +7959,13 @@ function renderIssues(
 
                     <td>
                         ${esc(issue.ip)}
+                    </td>
+
+                    <td>
+                        ${esc(
+                            issue.group_name
+                            || "Ungrouped"
+                        )}
                     </td>
 
                     <td>
@@ -12467,6 +12987,10 @@ async function loadMinerGroups() {
         renderMinerGroupFilter();
 
         renderMinerGroupRows();
+
+        maintenancePopulateGroups();
+
+        renderOperationalGroupFilters();
 
 
         if (status) {

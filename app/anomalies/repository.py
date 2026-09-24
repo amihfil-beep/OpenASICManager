@@ -1258,22 +1258,52 @@ def issue_rows(limit=100):
     conn = db()
     try:
         active = conn.execute("""
-            SELECT * FROM issues
-            WHERE status='ACTIVE'
+            SELECT
+                i.*,
+                m.group_id AS group_id,
+                g.name AS group_name
+
+            FROM issues i
+
+            LEFT JOIN miners m
+                ON m.id=i.miner_id
+
+            LEFT JOIN miner_groups g
+                ON g.id=m.group_id
+
+            WHERE i.status='ACTIVE'
+
             ORDER BY
-                CASE severity
+                CASE i.severity
                     WHEN 'CRITICAL' THEN 1
                     WHEN 'WARNING' THEN 2
                     ELSE 3
                 END,
-                first_seen ASC
+                i.first_seen ASC
         """).fetchall()
+
         resolved = conn.execute("""
-            SELECT * FROM issues
-            WHERE status='RESOLVED'
-            ORDER BY resolved_at DESC
+            SELECT
+                i.*,
+                m.group_id AS group_id,
+                g.name AS group_name
+
+            FROM issues i
+
+            LEFT JOIN miners m
+                ON m.id=i.miner_id
+
+            LEFT JOIN miner_groups g
+                ON g.id=m.group_id
+
+            WHERE i.status='RESOLVED'
+
+            ORDER BY i.resolved_at DESC
+
             LIMIT ?
-        """, (limit,)).fetchall()
+        """, (
+            limit,
+        )).fetchall()
         return list(active), list(resolved)
     finally:
         conn.close()

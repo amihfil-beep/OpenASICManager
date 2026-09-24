@@ -89,6 +89,15 @@ class DashboardTemplateTests(unittest.TestCase):
             "maintenanceBackdrop",
             "maintenanceScope",
             "maintenanceMiner",
+            "maintenanceGroup",
+            "maintenanceGroupFilter",
+            "ASIC group snapshot",
+            "GROUP scope captures an immutable ASIC snapshot",
+            "maintenancePopulateGroups",
+            "maintenanceMatchesGroupFilter",
+            "member_ids",
+            "GROUP MAINT",
+            "snapshot ",
             "maintenanceStartsAt",
             "maintenanceEndsAt",
             "maintenanceNote",
@@ -105,6 +114,29 @@ class DashboardTemplateTests(unittest.TestCase):
             "/api/maintenance/${windowId}/end",
             "Maximum duration: 7 days",
             "Telemetry and ASIC control remain independent",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
+    def test_dashboard_contains_group_aware_issue_views(self):
+        content = dashboard_html()
+
+        expected = (
+            "issuesGroupFilter",
+            "issueMatchesGroupFilter",
+            "operationalGroupMatches",
+            "renderOperationalGroupFilters",
+            "activeIssues",
+            "resolvedIssues",
+            "issue.group_name",
+            "Ungrouped",
+            "active issue(s) in this group view",
         )
 
         for marker in expected:

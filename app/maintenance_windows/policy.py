@@ -12,6 +12,7 @@ TIMEZONE = ZoneInfo(TIMEZONE_NAME)
 MAINTENANCE_SCOPES = {
     "FARM",
     "MINER",
+    "GROUP",
 }
 
 MAX_MAINTENANCE_DURATION_SECONDS = (
@@ -44,10 +45,28 @@ def normalize_maintenance_note(value):
 def _integer(value, field):
     try:
         return int(value)
+
     except Exception:
         raise ValueError(
             f"{field} must be an integer epoch timestamp"
         )
+
+
+def _positive_id(value, field):
+    try:
+        result = int(value)
+
+    except Exception:
+        raise ValueError(
+            f"{field} is required"
+        )
+
+    if result <= 0:
+        raise ValueError(
+            f"{field} must be positive"
+        )
+
+    return result
 
 
 def normalize_maintenance_create(
@@ -62,6 +81,7 @@ def normalize_maintenance_create(
     allowed = {
         "scope",
         "miner_id",
+        "group_id",
         "starts_at",
         "ends_at",
         "note",
@@ -86,7 +106,7 @@ def normalize_maintenance_create(
 
     if scope not in MAINTENANCE_SCOPES:
         raise ValueError(
-            "scope must be FARM or MINER"
+            "scope must be FARM, MINER or GROUP"
         )
 
     if "ends_at" not in payload:
@@ -122,7 +142,11 @@ def normalize_maintenance_create(
         - starts_at
     )
 
-    if duration > MAX_MAINTENANCE_DURATION_SECONDS:
+    if (
+        duration
+        >
+        MAX_MAINTENANCE_DURATION_SECONDS
+    ):
         raise ValueError(
             "maintenance duration must not exceed 7 days"
         )
@@ -131,32 +155,61 @@ def normalize_maintenance_create(
         "miner_id"
     )
 
+    group_id = payload.get(
+        "group_id"
+    )
+
+
     if scope == "FARM":
+
         if miner_id is not None:
             raise ValueError(
                 "miner_id must be null for FARM scope"
             )
 
+        if group_id is not None:
+            raise ValueError(
+                "group_id must be null for FARM scope"
+            )
+
         miner_id = None
+        group_id = None
+
+
+    elif scope == "MINER":
+
+        if group_id is not None:
+            raise ValueError(
+                "group_id must be null for MINER scope"
+            )
+
+        miner_id = _positive_id(
+            miner_id,
+            "miner_id",
+        )
+
+        group_id = None
+
 
     else:
-        try:
-            miner_id = int(
-                miner_id
-            )
-        except Exception:
+
+        if miner_id is not None:
             raise ValueError(
-                "miner_id is required for MINER scope"
+                "miner_id must be null for GROUP scope"
             )
 
-        if miner_id <= 0:
-            raise ValueError(
-                "miner_id must be positive"
-            )
+        group_id = _positive_id(
+            group_id,
+            "group_id",
+        )
+
+        miner_id = None
+
 
     return {
         "scope": scope,
         "miner_id": miner_id,
+        "group_id": group_id,
         "starts_at": starts_at,
         "ends_at": ends_at,
         "note": normalize_maintenance_note(
@@ -265,6 +318,23 @@ def maintenance_time_iso(value):
     ).isoformat()
 
 
+def _row_value(
+    row,
+    key,
+    default=None,
+):
+    try:
+        keys = row.keys()
+
+    except AttributeError:
+        keys = row
+
+    if key not in keys:
+        return default
+
+    return row[key]
+
+
 def maintenance_window_dict(
     row,
     now,
@@ -274,40 +344,152 @@ def maintenance_window_dict(
         now,
     )
 
+    group_id = _row_value(
+        row,
+        "group_id",
+    )
+
+    member_count = _row_value(
+        row,
+        "member_count",
+        0,
+    )
+
+    member_ids_csv = _row_value(
+        row,
+        "member_ids_csv",
+    )
+
+    member_ids = (
+        [
+            int(value)
+            for value
+            in str(
+                member_ids_csv
+            ).split(",")
+            if value
+        ]
+        if member_ids_csv
+        else []
+    )
+
+    miner_group_id = _row_value(
+        row,
+        "miner_group_id",
+    )
+
     return {
         "id": int(row["id"]),
         "scope": row["scope"],
-        "miner_id": row["miner_id"],
-        "miner_name": row["miner_name"],
-        "miner_ip": row["miner_ip"],
-        "starts_at": int(row["starts_at"]),
-        "starts_at_iso": maintenance_time_iso(
-            row["starts_at"]
-        ),
-        "ends_at": int(row["ends_at"]),
-        "ends_at_iso": maintenance_time_iso(
-            row["ends_at"]
-        ),
-        "ended_at": row["ended_at"],
-        "ended_at_iso": maintenance_time_iso(
-            row["ended_at"]
-        ),
-        "note": row["note"],
-        "created_by": row["created_by"],
-        "created_at": int(row["created_at"]),
-        "created_at_iso": maintenance_time_iso(
-            row["created_at"]
-        ),
-        "updated_by": row["updated_by"],
-        "updated_at": row["updated_at"],
-        "ended_by": row["ended_by"],
-        "status": status,
-        "active": status == "ACTIVE",
+
+        "miner_id":
+            row["miner_id"],
+
+        "miner_name":
+            _row_value(
+                row,
+                "miner_name",
+            ),
+
+        "miner_ip":
+            _row_value(
+                row,
+                "miner_ip",
+            ),
+
+        "group_id":
+            (
+                int(group_id)
+                if group_id is not None
+                else None
+            ),
+
+        "group_name":
+            _row_value(
+                row,
+                "group_name",
+            ),
+
+        "member_count":
+            int(
+                member_count
+                or 0
+            ),
+
+        "member_ids":
+            member_ids,
+
+        "miner_group_id":
+            (
+                int(miner_group_id)
+                if miner_group_id is not None
+                else None
+            ),
+
+        "miner_group_name":
+            _row_value(
+                row,
+                "miner_group_name",
+            ),
+
+        "starts_at":
+            int(row["starts_at"]),
+
+        "starts_at_iso":
+            maintenance_time_iso(
+                row["starts_at"]
+            ),
+
+        "ends_at":
+            int(row["ends_at"]),
+
+        "ends_at_iso":
+            maintenance_time_iso(
+                row["ends_at"]
+            ),
+
+        "ended_at":
+            row["ended_at"],
+
+        "ended_at_iso":
+            maintenance_time_iso(
+                row["ended_at"]
+            ),
+
+        "note":
+            row["note"],
+
+        "created_by":
+            row["created_by"],
+
+        "created_at":
+            int(row["created_at"]),
+
+        "created_at_iso":
+            maintenance_time_iso(
+                row["created_at"]
+            ),
+
+        "updated_by":
+            row["updated_by"],
+
+        "updated_at":
+            row["updated_at"],
+
+        "ended_by":
+            row["ended_by"],
+
+        "status":
+            status,
+
+        "active":
+            status == "ACTIVE",
     }
 
 
 __all__ = (
     "TIMEZONE_NAME",
+    "MAINTENANCE_SCOPES",
     "MAX_MAINTENANCE_DURATION_SECONDS",
     "MAX_MAINTENANCE_NOTE_LENGTH",
     "normalize_maintenance_note",

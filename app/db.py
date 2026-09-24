@@ -444,6 +444,212 @@ def init_db():
     );
     """)
 
+
+    # --------------------------------------------------------
+    # Maintenance GROUP scope / immutable membership snapshot
+    # --------------------------------------------------------
+
+    maintenance_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(maintenance_windows)"
+        ).fetchall()
+    }
+
+    if not {
+        "group_id",
+        "group_name",
+    }.issubset(
+        maintenance_columns
+    ):
+
+        conn.execute(
+            "SAVEPOINT maintenance_group_scope"
+        )
+
+        try:
+
+            conn.execute("""
+                DROP INDEX IF EXISTS
+                    idx_maintenance_time
+            """)
+
+            conn.execute("""
+                DROP INDEX IF EXISTS
+                    idx_maintenance_miner
+            """)
+
+            conn.execute("""
+                ALTER TABLE maintenance_windows
+                RENAME TO maintenance_windows_legacy
+            """)
+
+            conn.execute("""
+                CREATE TABLE maintenance_windows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                    scope TEXT NOT NULL,
+
+                    miner_id INTEGER,
+
+                    group_id INTEGER,
+                    group_name TEXT,
+
+                    starts_at INTEGER NOT NULL,
+                    ends_at INTEGER NOT NULL,
+
+                    note TEXT,
+
+                    created_by TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+
+                    updated_by TEXT,
+                    updated_at INTEGER,
+
+                    ended_at INTEGER,
+                    ended_by TEXT,
+
+                    CHECK (
+                        scope IN (
+                            'FARM',
+                            'MINER',
+                            'GROUP'
+                        )
+                    ),
+
+                    CHECK (
+                        (
+                            scope='FARM'
+                            AND miner_id IS NULL
+                            AND group_id IS NULL
+                            AND group_name IS NULL
+                        )
+                        OR
+                        (
+                            scope='MINER'
+                            AND miner_id IS NOT NULL
+                            AND group_id IS NULL
+                            AND group_name IS NULL
+                        )
+                        OR
+                        (
+                            scope='GROUP'
+                            AND miner_id IS NULL
+                            AND group_id IS NOT NULL
+                            AND group_name IS NOT NULL
+                        )
+                    )
+                )
+            """)
+
+            conn.execute("""
+                INSERT INTO maintenance_windows
+                (
+                    id,
+                    scope,
+                    miner_id,
+                    group_id,
+                    group_name,
+                    starts_at,
+                    ends_at,
+                    note,
+                    created_by,
+                    created_at,
+                    updated_by,
+                    updated_at,
+                    ended_at,
+                    ended_by
+                )
+
+                SELECT
+                    id,
+                    scope,
+                    miner_id,
+                    NULL,
+                    NULL,
+                    starts_at,
+                    ends_at,
+                    note,
+                    created_by,
+                    created_at,
+                    updated_by,
+                    updated_at,
+                    ended_at,
+                    ended_by
+
+                FROM maintenance_windows_legacy
+            """)
+
+            conn.execute("""
+                DROP TABLE maintenance_windows_legacy
+            """)
+
+            conn.execute("""
+                CREATE INDEX idx_maintenance_time
+                ON maintenance_windows(
+                    starts_at,
+                    ends_at
+                )
+            """)
+
+            conn.execute("""
+                CREATE INDEX idx_maintenance_miner
+                ON maintenance_windows(
+                    miner_id,
+                    starts_at,
+                    ends_at
+                )
+            """)
+
+            conn.execute(
+                "RELEASE SAVEPOINT "
+                "maintenance_group_scope"
+            )
+
+        except Exception:
+
+            conn.execute(
+                "ROLLBACK TO SAVEPOINT "
+                "maintenance_group_scope"
+            )
+
+            conn.execute(
+                "RELEASE SAVEPOINT "
+                "maintenance_group_scope"
+            )
+
+            raise
+
+
+    conn.executescript("""
+    CREATE INDEX IF NOT EXISTS idx_maintenance_group
+    ON maintenance_windows(
+        group_id,
+        starts_at,
+        ends_at
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_window_members (
+        window_id INTEGER NOT NULL,
+        miner_id INTEGER NOT NULL,
+
+        miner_name TEXT NOT NULL,
+        miner_ip TEXT NOT NULL,
+
+        PRIMARY KEY (
+            window_id,
+            miner_id
+        )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_maintenance_members_miner
+    ON maintenance_window_members(
+        miner_id,
+        window_id
+    );
+    """)
+
+
     issue_columns = {
         row["name"]
         for row in conn.execute(

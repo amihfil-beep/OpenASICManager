@@ -4,6 +4,54 @@ All notable changes to OpenASICManager will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
+Fleet-groups and bulk-operations release focused on operating a real ASIC fleet as deterministic operational groups while preserving the existing per-miner verification, anomaly, maintenance and audit safety boundaries.
+
+### Added
+
+- Persistent named operational miner groups with zero-or-one group membership per miner.
+- Group management API and dashboard workflows for creating, renaming, deleting, assigning, moving and clearing membership.
+- Group-aware inventory filtering and group context in fleet views.
+- Group-level anomaly-policy overrides with deterministic `GLOBAL -> GROUP -> MINER` inheritance.
+- Per-field anomaly-policy source visibility for GLOBAL, GROUP and MINER values.
+- Group-scoped planned maintenance with immutable membership snapshots captured when the window is created.
+- Group-aware maintenance and issue views, including snapshot counts, current issue-group context and group filters.
+- Safe bounded bulk PAUSE, RESUME and REBOOT for explicitly selected miners or one operational group.
+- Server-side bulk eligibility preview with explicit per-target accepted/rejected results.
+- Bulk-operation progress through the existing per-miner control-job read model.
+- Stronger typed confirmation for bulk REBOOT.
+- Permanent regression coverage for group membership, layered anomaly inheritance, snapshot maintenance and bulk-control safety semantics.
+
+### Changed
+
+- Anomaly-policy inheritance now resolves applicable fields in deterministic order: GLOBAL, then GROUP, then MINER.
+- The shared anomaly scan interval remains global-only and cannot be overridden at group or miner level.
+- Moving or ungrouping a miner is rejected when the resulting inherited anomaly policy would be invalid.
+- Deleting a group ungroups current members without deleting miners, telemetry, incidents or historical maintenance snapshots.
+- GROUP maintenance coverage follows the creation-time snapshot rather than later group membership changes.
+- Group rename or deletion does not rewrite the identity or membership of an existing maintenance snapshot.
+- Safe bulk control fans accepted targets into the existing verified per-miner control-job pipeline rather than creating a second control engine.
+- Each accepted bulk target retains its own job, verification lifecycle, manual-override behavior and audit history.
+- Unsupported, disabled, missing or already-busy bulk targets are reported explicitly instead of being silently skipped.
+
+### Safety and compatibility
+
+- Existing installations upgrade with all pre-existing miners initially ungrouped.
+- Ungrouped miners retain the previous global/per-miner anomaly behavior unless an operator explicitly assigns a group.
+- Existing per-miner anomaly overrides remain supported and take precedence over group values.
+- Existing FARM and MINER maintenance windows remain supported.
+- GROUP maintenance affects anomaly suppression only; it never automatically PAUSEs, RESUMEs or REBOOTs ASICs.
+- Group membership changes alone never issue ASIC-control commands.
+- Bulk control requires explicit operator selection and submission.
+- The new bounded bulk API has no ALL or wildcard selector and limits one request to 50 ASICs.
+- Bulk REBOOT requires explicit confirmation in both the dashboard workflow and backend request.
+- Bulk control does not add a bulk job table, bulk worker or alternate control state machine.
+- The existing verified per-miner worker remains the execution authority for PAUSE, RESUME and REBOOT.
+- Existing scheduler/manual-override semantics are preserved for bulk actions exactly as for equivalent individual actions.
+- Public transactional upgrades remain supported from OpenASICManager 0.2.0 and newer public releases.
+- Historical private/legacy 1.5.2 deployments remain outside the generic public upgrade contract.
+
 ## [0.5.0] - 2026-09-24
 
 Incident-workflow and fleet-policy release focused on giving operators explicit control over issue acknowledgement, planned maintenance, miner-specific anomaly policy exceptions and Telegram incident delivery while preserving separation between detection, history, notifications and ASIC control.

@@ -20,18 +20,20 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 - bounded telemetry history and farm/miner charts;
 - reboot and manual controls;
 - configurable anomaly detection policies;
-- per-miner anomaly policy overrides;
+- operational ASIC groups;
+- GLOBAL / GROUP / MINER anomaly-policy inheritance;
 - operator issue acknowledgement and notes;
-- bounded planned-maintenance windows;
+- farm, miner and snapshot-based group maintenance;
+- bounded safe bulk PAUSE / RESUME / REBOOT;
 - configurable Telegram incident notifications;
 - audit logging;
 - optional secure access to the original ASIC web interface.
 
 ## Current release
 
-**0.5.0**
+**0.6.0**
 
-OpenASICManager 0.5.0 is an incident-workflow and fleet-policy release. It adds operator acknowledgement for anomaly issues, bounded planned-maintenance windows, per-miner anomaly policy overrides and configurable Telegram incident delivery while keeping anomaly detection, issue history, notification delivery and ASIC control as separate concerns.
+OpenASICManager 0.6.0 is a fleet-groups and bulk-operations release. It adds persistent operational groups, deterministic GLOBAL -> GROUP -> MINER anomaly-policy inheritance, snapshot-based group maintenance, group-aware fleet views and safe bounded bulk PAUSE / RESUME / REBOOT while preserving the existing verified per-miner control pipeline.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -100,6 +102,12 @@ The dashboard provides information including:
 
 Telemetry availability depends on ASIC firmware.
 
+### Fleet groups
+
+Each managed miner may belong to zero or one operational group.
+
+Groups provide deterministic fleet organization and may be used for dashboard filtering, anomaly-policy inheritance, snapshot-based planned maintenance and explicit bounded bulk control. Group membership by itself never starts, stops or reboots an ASIC.
+
 ### Control
 
 Supported operations include:
@@ -111,6 +119,8 @@ Supported operations include:
 - enable/disable scheduling.
 
 Control operations are verified asynchronously rather than treated as successful only because an HTTP request returned successfully.
+
+The dashboard can also explicitly apply PAUSE, RESUME or REBOOT to selected miners or one operational group. The server previews every target first, limits a bulk request to 50 ASICs and reports ineligible targets explicitly. Every accepted target then enters the same existing per-miner control-job and verification lifecycle used by an individual command; there is no separate bulk-control engine.
 
 ### History and anomaly detection
 
@@ -143,7 +153,9 @@ Current anomaly logic includes conditions such as:
 
 Global anomaly-policy settings can be changed from the dashboard for scan interval, offline grace, overheat trigger and clear thresholds, overheat grace, and scheduler-mismatch grace.
 
-Selected miners may override applicable grace and threshold values independently. Unset fields continue to inherit the current global policy, and the dashboard shows whether each effective value comes from GLOBAL policy or an explicit OVERRIDE. The shared anomaly scan interval remains global-only.
+Applicable anomaly grace and threshold values resolve in deterministic `GLOBAL -> GROUP -> MINER` order. A group may override the global value and an individual miner may override its inherited group/global value. The dashboard exposes the effective value and its GLOBAL, GROUP or MINER source. The shared anomaly scan interval remains global-only.
+
+Invalid cross-level combinations are rejected, including membership changes that would make the resulting effective policy invalid.
 
 Alert-policy configuration affects detection only and does not automatically start, stop or reboot ASICs.
 
@@ -160,7 +172,9 @@ Operators can:
 
 Acknowledgement means that an operator has seen the issue. It does not mean the underlying condition has been fixed, and automatic recovery continues independently.
 
-Planned maintenance can be created for the entire farm or for an individual ASIC. Maintenance windows have explicit start/end times and may be scheduled, extended or ended early.
+Planned maintenance can be created for the entire farm, for an individual ASIC or for an operational group. Maintenance windows have explicit start/end times and may be scheduled, extended or ended early.
+
+GROUP maintenance snapshots the group's current ASIC membership when the window is created. Later joins, moves, renames or group deletion do not rewrite that historical coverage.
 
 During active maintenance, covered new anomaly incidents are suppressed from normal notification noise while telemetry, inventory visibility and audit history continue normally. If the condition remains after maintenance expires, it becomes eligible for normal anomaly handling again.
 

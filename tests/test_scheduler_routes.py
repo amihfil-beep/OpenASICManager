@@ -1,7 +1,12 @@
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from api.scheduler import create_scheduler_router
+from scheduler.validation import (
+    schedule_normalize_input,
+)
 
 
 class SchedulerRoutesTests(unittest.TestCase):
@@ -34,6 +39,99 @@ class SchedulerRoutesTests(unittest.TestCase):
             ("/api/scheduler/toggle", "POST"),
         }
         self.assertTrue(expected.issubset(routes))
+
+    def test_scope_validation_matrix(self):
+        cases = (
+            (
+                {
+                    "scope":
+                        "FARM",
+                },
+                "FARM",
+                None,
+                None,
+            ),
+            (
+                {
+                    "scope":
+                        "GROUP",
+                    "group_id":
+                        7,
+                },
+                "GROUP",
+                7,
+                None,
+            ),
+            (
+                {
+                    "scope":
+                        "GROUP",
+                },
+                None,
+                None,
+                "positive group_id",
+            ),
+            (
+                {
+                    "scope":
+                        "FARM",
+                    "group_id":
+                        7,
+                },
+                None,
+                None,
+                "must not include group_id",
+            ),
+            (
+                {
+                    "scope":
+                        "UNKNOWN",
+                },
+                None,
+                None,
+                "FARM or GROUP",
+            ),
+        )
+
+        for (
+            payload,
+            expected_scope,
+            expected_group_id,
+            expected_error,
+        ) in cases:
+
+            with self.subTest(
+                payload=payload
+            ):
+
+                if expected_error:
+
+                    with self.assertRaisesRegex(
+                        HTTPException,
+                        expected_error,
+                    ):
+                        schedule_normalize_input(
+                            payload
+                        )
+
+                    continue
+
+                normalized = (
+                    schedule_normalize_input(
+                        payload
+                    )
+                )
+
+                self.assertEqual(
+                    normalized["scope"],
+                    expected_scope,
+                )
+
+                self.assertEqual(
+                    normalized["group_id"],
+                    expected_group_id,
+                )
+
 
     @patch("api.scheduler.set_setting")
     @patch("api.scheduler.get_setting", return_value="0")

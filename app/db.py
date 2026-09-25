@@ -745,7 +745,9 @@ def ensure_schedule_rules_schema():
                     NOT NULL,
 
                 scope TEXT
-                    NOT NULL DEFAULT 'SCHEDULED',
+                    NOT NULL DEFAULT 'FARM',
+
+                group_id INTEGER,
 
                 comment TEXT
                     NOT NULL DEFAULT '',
@@ -764,11 +766,76 @@ def ensure_schedule_rules_schema():
         """)
 
 
+        schedule_columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(schedule_rules)"
+            ).fetchall()
+        }
+
+
+        if "scope" not in schedule_columns:
+
+            conn.execute("""
+                ALTER TABLE schedule_rules
+                ADD COLUMN scope TEXT
+                    NOT NULL DEFAULT 'FARM'
+            """)
+
+
+        if "group_id" not in schedule_columns:
+
+            conn.execute("""
+                ALTER TABLE schedule_rules
+                ADD COLUMN group_id INTEGER
+            """)
+
+
+        # 0.6.0 and earlier used an implementation-only
+        # SCHEDULED/ALL scope. Preserve its exact farm-wide
+        # behavior by migrating every legacy value to FARM.
+        conn.execute("""
+            UPDATE schedule_rules
+
+            SET
+                scope='FARM',
+                group_id=NULL
+
+            WHERE
+                scope IS NULL
+                OR scope NOT IN (
+                    'FARM',
+                    'GROUP'
+                )
+        """)
+
+
+        # FARM rules never retain a group target.
+        conn.execute("""
+            UPDATE schedule_rules
+            SET group_id=NULL
+            WHERE scope='FARM'
+        """)
+
+
         conn.execute("""
             CREATE INDEX IF NOT EXISTS
                 idx_schedule_rules_enabled_time
 
             ON schedule_rules(
+                enabled,
+                time_minutes
+            )
+        """)
+
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS
+                idx_schedule_rules_scope_group
+
+            ON schedule_rules(
+                scope,
+                group_id,
                 enabled,
                 time_minutes
             )

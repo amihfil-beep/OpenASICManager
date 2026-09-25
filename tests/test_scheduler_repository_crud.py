@@ -34,7 +34,8 @@ class SchedulerRepositoryCrudTests(unittest.TestCase):
             "action": "PAUSE",
             "time_minutes": 7 * 60,
             "days_mask": 0b00011111,
-            "scope": "ALL",
+            "scope": "FARM",
+            "group_id": None,
             "comment": "Morning pause",
         }
 
@@ -116,6 +117,168 @@ class SchedulerRepositoryCrudTests(unittest.TestCase):
         self.assertTrue(bool(enabled["enabled"]))
         self.assertEqual(enabled["effective_from"], 1500)
         self.assertEqual(enabled["updated_at"], 1500)
+
+    def test_legacy_scope_migrates_to_farm(self):
+        conn = db_module.db()
+
+        conn.execute("""
+            CREATE TABLE schedule_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                action TEXT NOT NULL,
+                time_minutes INTEGER NOT NULL,
+                days_mask INTEGER NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'SCHEDULED',
+                comment TEXT NOT NULL DEFAULT '',
+                effective_from INTEGER NOT NULL DEFAULT 0,
+                last_run_key TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+        """)
+
+        conn.execute("""
+            INSERT INTO schedule_rules
+            (
+                enabled,
+                action,
+                time_minutes,
+                days_mask,
+                scope,
+                comment,
+                effective_from,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                1,
+                'PAUSE',
+                420,
+                31,
+                'SCHEDULED',
+                'Legacy',
+                100,
+                100,
+                100
+            )
+        """)
+
+        conn.commit()
+        conn.close()
+
+        db_module.SCHEDULE_RULES_SCHEMA_READY = False
+        db_module.ensure_schedule_rules_schema()
+
+        conn = db_module.db()
+
+        try:
+            row = conn.execute("""
+                SELECT
+                    scope,
+                    group_id
+
+                FROM schedule_rules
+            """).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(
+            row["scope"],
+            "FARM",
+        )
+        self.assertIsNone(
+            row["group_id"]
+        )
+
+
+    def test_group_rule_lifecycle_exposes_group_context(self):
+        conn = db_module.db()
+
+        cursor = conn.execute("""
+            INSERT INTO miner_groups
+            (
+                name,
+                normalized_name,
+                created_by,
+                created_at
+            )
+            VALUES (
+                'Rack A',
+                'rack a',
+                'TEST',
+                100
+            )
+        """)
+
+        group_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        normalized = dict(
+            self.normalized
+        )
+
+        normalized.update({
+            "scope":
+                "GROUP",
+            "group_id":
+                group_id,
+        })
+
+        created = create_schedule_rule(
+            normalized,
+            2000,
+        )
+
+        fetched = get_schedule_rule(
+            created["id"]
+        )
+
+        self.assertEqual(
+            fetched["scope"],
+            "GROUP",
+        )
+        self.assertEqual(
+            fetched["group_id"],
+            group_id,
+        )
+        self.assertEqual(
+            fetched["group_name"],
+            "Rack A",
+        )
+        self.assertEqual(
+            fetched[
+                "group_member_count"
+            ],
+            0,
+        )
+
+        changed = dict(
+            normalized
+        )
+
+        changed.update({
+            "scope":
+                "FARM",
+            "group_id":
+                None,
+        })
+
+        updated = update_schedule_rule(
+            created["id"],
+            changed,
+            2100,
+            2200,
+        )
+
+        self.assertEqual(
+            updated["scope"],
+            "FARM",
+        )
+        self.assertIsNone(
+            updated["group_id"]
+        )
+
 
     def test_delete_returns_deleted_rule(self):
         rule = create_schedule_rule(

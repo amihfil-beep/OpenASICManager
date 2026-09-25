@@ -12,7 +12,16 @@ from anomalies import service
 class FakeRuntime:
     def __init__(self):
         self.events = []
-        self.desired_state = lambda when: None
+        self.effective_schedule_states = (
+            lambda miners, when: {
+                int(miner["id"]): {
+                    "desired_state":
+                        None,
+                }
+                for miner
+                in miners
+            }
+        )
         self.stop_event = None
 
     def log_event(self, **kwargs):

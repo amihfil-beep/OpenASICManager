@@ -19170,7 +19170,7 @@ function renderScheduleRules(
                 +
                 (
                     groupCount
-                    ? " (GROUP execution pending scoped scheduler)"
+                    ? " · scoped scheduling active"
                     : ""
                 )
             );
@@ -19283,7 +19283,7 @@ function renderScheduleRules(
                                             )
                                         }
                                         current
-                                        · configuration only
+                                        · dynamic membership
                                     </div>
                                 `
                                 : ""
@@ -19678,11 +19678,9 @@ function scheduleRuleScopeChanged() {
                 +
                 "GROUP membership is dynamic. "
                 +
-                "GROUP rule execution is not active "
+                "Scoped scheduling follows current "
                 +
-                "until per-miner scoped scheduling "
-                +
-                "is enabled."
+                "membership."
             );
 
         return;
@@ -19713,11 +19711,9 @@ function scheduleRuleScopeChanged() {
             +
             "Membership is dynamic. "
             +
-            "This GROUP rule is configuration-only "
+            "GROUP scheduling is active and follows "
             +
-            "until per-miner scoped scheduling "
-            +
-            "is enabled."
+            "current membership."
         );
 }
 

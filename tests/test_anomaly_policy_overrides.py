@@ -717,8 +717,15 @@ class FakeRuntime:
     def __init__(self):
         self.events = []
 
-        self.desired_state = (
-            lambda when: None
+        self.effective_schedule_states = (
+            lambda miners, when: {
+                int(miner["id"]): {
+                    "desired_state":
+                        None,
+                }
+                for miner
+                in miners
+            }
         )
 
     def log_event(

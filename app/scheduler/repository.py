@@ -27,6 +27,8 @@ from scheduler.policy import (
 __all__ = (
     "schedule_state_details",
     "desired_state",
+    "effective_schedule_states",
+    "next_transition_for_miner",
     "schedule_conflicting_rule",
     "next_transition",
     "list_schedule_rules",
@@ -41,141 +43,135 @@ __all__ = (
 )
 
 
-def schedule_state_details(
-    now=None,
+def _rule_last_occurrence(
+    rule,
+    now,
 ):
 
-    ensure_schedule_rules_schema()
+    hour = (
+        int(
+            rule["time_minutes"]
+        )
+        // 60
+    )
+
+    minute = (
+        int(
+            rule["time_minutes"]
+        )
+        % 60
+    )
+
+    mask = int(
+        rule["days_mask"]
+    )
+
+    effective_from = int(
+        rule["effective_from"]
+        or 0
+    )
 
 
-    if now is None:
+    # Seven days cover a weekly schedule.
+    # The eighth day gives one safe boundary day.
+    for offset in range(
+        0,
+        8,
+    ):
 
-        now = datetime.now(
-            MOSCOW
+        day = (
+            now
+            -
+            timedelta(
+                days=offset
+            )
+        ).date()
+
+
+        if not (
+            mask
+            &
+            (
+                1
+                <<
+                day.weekday()
+            )
+        ):
+            continue
+
+
+        occurrence = datetime(
+            day.year,
+            day.month,
+            day.day,
+            hour,
+            minute,
+            0,
+            tzinfo=MOSCOW,
         )
 
 
-    conn = db()
+        if occurrence > now:
+            continue
 
-    rules = conn.execute("""
-        SELECT *
 
-        FROM schedule_rules
+        # Never apply a newly-created/enabled rule
+        # retroactively to an occurrence that happened
+        # before that rule became effective.
+        if (
+            effective_from
+            and
+            int(
+                occurrence.timestamp()
+            )
+            <
+            effective_from
+        ):
+            continue
 
-        WHERE
-            enabled=1
-            AND scope='FARM'
-    """).fetchall()
 
-    conn.close()
+        return occurrence
 
+
+    return None
+
+
+def _scope_state_details(
+    rules,
+    now,
+):
 
     winner_rule = None
     winner_occurrence = None
 
 
-    # Seven days are enough for a weekly schedule.
-    # Eight gives us one extra safe boundary day.
-
     for rule in rules:
 
-        hour = (
-            int(
-                rule["time_minutes"]
+        occurrence = (
+            _rule_last_occurrence(
+                rule,
+                now,
             )
-            // 60
-        )
-
-        minute = (
-            int(
-                rule["time_minutes"]
-            )
-            % 60
-        )
-
-        mask = int(
-            rule["days_mask"]
-        )
-
-        effective_from = int(
-            rule["effective_from"]
-            or 0
         )
 
 
-        for offset in range(
-            0,
-            8,
+        if occurrence is None:
+            continue
+
+
+        if (
+            winner_occurrence is None
+            or
+            occurrence
+            >
+            winner_occurrence
         ):
 
-            day = (
-                now
-                -
-                timedelta(
-                    days=offset
-                )
-            ).date()
-
-
-            if not (
-                mask
-                &
-                (
-                    1
-                    <<
-                    day.weekday()
-                )
-            ):
-                continue
-
-
-            occurrence = datetime(
-                day.year,
-                day.month,
-                day.day,
-                hour,
-                minute,
-                0,
-                tzinfo=MOSCOW,
+            winner_occurrence = (
+                occurrence
             )
 
-
-            if occurrence > now:
-                continue
-
-
-            # A newly-created rule is never applied
-            # retroactively to an occurrence that
-            # happened before the rule existed.
-
-            if (
-                effective_from
-                and
-                int(
-                    occurrence.timestamp()
-                )
-                <
-                effective_from
-            ):
-                continue
-
-
-            if (
-                winner_occurrence is None
-                or
-                occurrence
-                >
-                winner_occurrence
-            ):
-
-                winner_occurrence = (
-                    occurrence
-                )
-
-                winner_rule = rule
-
-
-            break
+            winner_rule = rule
 
 
     if winner_rule is None:
@@ -196,6 +192,370 @@ def schedule_state_details(
     )
 
 
+def _scope_next_transition(
+    rules,
+    now,
+):
+
+    candidates = []
+
+
+    for rule in rules:
+
+        candidate = (
+            schedule_rule_next_run(
+                rule,
+                now,
+            )
+        )
+
+
+        if candidate is not None:
+
+            candidates.append(
+                candidate
+            )
+
+
+    if not candidates:
+        return None
+
+
+    return min(
+        candidates
+    )
+
+
+def _enabled_schedule_rules():
+
+    ensure_schedule_rules_schema()
+
+
+    conn = db()
+
+    try:
+        return list(
+            conn.execute("""
+                SELECT *
+
+                FROM schedule_rules
+
+                WHERE enabled=1
+
+                ORDER BY id
+            """).fetchall()
+        )
+
+    finally:
+        conn.close()
+
+
+def _rules_for_scope(
+    rules,
+    scope,
+    group_id=None,
+):
+
+    result = []
+
+
+    for rule in rules:
+
+        if str(
+            rule["scope"]
+        ) != scope:
+            continue
+
+
+        if scope == "GROUP":
+
+            if (
+                group_id is None
+                or
+                rule["group_id"] is None
+                or
+                int(
+                    rule["group_id"]
+                )
+                !=
+                int(
+                    group_id
+                )
+            ):
+                continue
+
+
+        result.append(
+            rule
+        )
+
+
+    return result
+
+
+def _effective_schedule_details(
+    miner,
+    rules,
+    now,
+):
+
+    farm_rules = (
+        _rules_for_scope(
+            rules,
+            "FARM",
+        )
+    )
+
+
+    group_id = (
+        miner["group_id"]
+        if (
+            "group_id"
+            in miner.keys()
+        )
+        else None
+    )
+
+
+    group_rules = (
+        _rules_for_scope(
+            rules,
+            "GROUP",
+            group_id,
+        )
+        if group_id is not None
+        else []
+    )
+
+
+    (
+        farm_state,
+        farm_rule,
+        farm_occurrence,
+    ) = _scope_state_details(
+        farm_rules,
+        now,
+    )
+
+
+    farm_next = (
+        _scope_next_transition(
+            farm_rules,
+            now,
+        )
+    )
+
+
+    (
+        group_state,
+        group_rule,
+        group_occurrence,
+    ) = _scope_state_details(
+        group_rules,
+        now,
+    )
+
+
+    group_next = (
+        _scope_next_transition(
+            group_rules,
+            now,
+        )
+    )
+
+
+    # GROUP is the more specific layer.
+    #
+    # Once a GROUP rule has an effective past occurrence,
+    # FARM transitions no longer change the effective state
+    # for that miner until membership or GROUP schedule
+    # applicability changes.
+    if group_rule is not None:
+
+        return {
+            "desired_state":
+                group_state,
+
+            "source_scope":
+                "GROUP",
+
+            "rule":
+                group_rule,
+
+            "occurrence":
+                group_occurrence,
+
+            "next_transition":
+                group_next,
+        }
+
+
+    # No GROUP occurrence is active yet.
+    #
+    # FARM remains the current baseline, but the first future
+    # GROUP occurrence can become the miner's next effective
+    # transition before the next FARM event.
+    future_candidates = [
+        candidate
+        for candidate
+        in (
+            farm_next,
+            group_next,
+        )
+        if candidate is not None
+    ]
+
+
+    return {
+        "desired_state":
+            farm_state,
+
+        "source_scope":
+            (
+                "FARM"
+                if farm_rule is not None
+                else None
+            ),
+
+        "rule":
+            farm_rule,
+
+        "occurrence":
+            farm_occurrence,
+
+        "next_transition":
+            (
+                min(
+                    future_candidates
+                )
+                if future_candidates
+                else None
+            ),
+    }
+
+
+def effective_schedule_states(
+    miners,
+    now=None,
+):
+
+    if now is None:
+
+        now = datetime.now(
+            MOSCOW
+        )
+
+
+    rules = (
+        _enabled_schedule_rules()
+    )
+
+
+    return {
+        int(
+            miner["id"]
+        ):
+            _effective_schedule_details(
+                miner,
+                rules,
+                now,
+            )
+
+        for miner
+        in miners
+    }
+
+
+def next_transition_for_miner(
+    miner_id,
+    now=None,
+):
+
+    if now is None:
+
+        now = datetime.now(
+            MOSCOW
+        )
+
+
+    ensure_schedule_rules_schema()
+
+
+    conn = db()
+
+    try:
+
+        miner = conn.execute("""
+            SELECT
+                id,
+                group_id
+
+            FROM miners
+
+            WHERE id=?
+        """, (
+            int(
+                miner_id
+            ),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+
+    if miner is None:
+        return None
+
+
+    rules = (
+        _enabled_schedule_rules()
+    )
+
+
+    details = (
+        _effective_schedule_details(
+            miner,
+            rules,
+            now,
+        )
+    )
+
+
+    return details[
+        "next_transition"
+    ]
+
+
+def schedule_state_details(
+    now=None,
+):
+
+    if now is None:
+
+        now = datetime.now(
+            MOSCOW
+        )
+
+
+    rules = [
+        rule
+        for rule
+        in _enabled_schedule_rules()
+        if str(
+            rule["scope"]
+        )
+        ==
+        "FARM"
+    ]
+
+
+    # Keep the historical farm-wide API/read model intact.
+    return _scope_state_details(
+        rules,
+        now,
+    )
+
+
 def desired_state(
     now=None,
 ):
@@ -207,6 +567,36 @@ def desired_state(
     )
 
     return state
+
+
+def next_transition(
+    now=None,
+):
+
+    if now is None:
+
+        now = datetime.now(
+            MOSCOW
+        )
+
+
+    rules = [
+        rule
+        for rule
+        in _enabled_schedule_rules()
+        if str(
+            rule["scope"]
+        )
+        ==
+        "FARM"
+    ]
+
+
+    # Keep the historical FARM summary intact.
+    return _scope_next_transition(
+        rules,
+        now,
+    )
 
 
 def schedule_conflicting_rule(

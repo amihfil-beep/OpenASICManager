@@ -1023,9 +1023,13 @@ class BulkControlSemanticIntegrationTests(
         )
 
 
-        next_transition_epoch = (
-            2_000_000_000
-        )
+        next_transition_epochs = {
+            1:
+                2_000_000_000,
+
+            4:
+                2_000_003_600,
+        }
 
 
         queue_runtime = QueueRuntime(
@@ -1038,9 +1042,13 @@ class BulkControlSemanticIntegrationTests(
             ),
 
             next_transition=(
-                lambda:
+                lambda miner_id:
                     datetime.fromtimestamp(
-                        next_transition_epoch,
+                        next_transition_epochs[
+                            int(
+                                miner_id
+                            )
+                        ],
                         timezone.utc,
                     )
             ),
@@ -1357,7 +1365,9 @@ class BulkControlSemanticIntegrationTests(
                     ][
                         "manual_override_until"
                     ],
-                    next_transition_epoch,
+                    next_transition_epochs[
+                        1
+                    ],
                 )
 
                 self.assertEqual(
@@ -1366,7 +1376,9 @@ class BulkControlSemanticIntegrationTests(
                     ][
                         "manual_override_until"
                     ],
-                    next_transition_epoch,
+                    next_transition_epochs[
+                        4
+                    ],
                 )
 
 

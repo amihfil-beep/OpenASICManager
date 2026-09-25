@@ -333,6 +333,33 @@ class DashboardTemplateTests(unittest.TestCase):
                 )
 
 
+    def test_dashboard_contains_scoped_scheduler_preview_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "scheduleRulePreview",
+            "scheduleRulePreviewButton",
+            "previewScheduleRule",
+            "scheduleRulePayload",
+            "scheduleRulePreviewFingerprint",
+            "/api/schedule/preview",
+            "Preview this exact rule before saving.",
+            "Rule cannot be enabled:",
+            "Affected now:",
+            "dynamic membership",
+            "scheduleContextHTML",
+            "schedule_context",
+            "Effective scheduler context for this ASIC",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_history_charts_use_bucket_metadata_and_show_gaps(self):
         content = dashboard_html()
 

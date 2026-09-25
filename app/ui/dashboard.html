@@ -1012,6 +1012,50 @@ a:hover {
     display: block;
 }
 
+.schedule-rule-preview {
+    display: none;
+    margin-top: 14px;
+    padding: 12px 14px;
+
+    background: rgba(54, 162, 105, .08);
+    border: 1px solid rgba(76, 190, 132, .28);
+    border-radius: 8px;
+
+    line-height: 1.45;
+}
+
+.schedule-rule-preview.show {
+    display: block;
+}
+
+.schedule-rule-preview.conflict {
+    background: rgba(190, 60, 60, .10);
+    border-color: rgba(220, 80, 80, .38);
+}
+
+.schedule-rule-preview-title {
+    font-weight: 800;
+    margin-bottom: 7px;
+}
+
+.schedule-rule-preview-row {
+    margin-top: 3px;
+}
+
+.schedule-context {
+    margin-top: 6px;
+    max-width: 220px;
+
+    font-size: 10px;
+    line-height: 1.4;
+
+    color: #9299a8;
+}
+
+.schedule-context strong {
+    color: #78b7ff;
+}
+
 @media (max-width: 700px) {
 
     .schedule-rule-form-grid {
@@ -3217,7 +3261,11 @@ a:hover {
     </div>
 
 
-    <div class="schedule-rule-form-grid">
+    <div
+        class="schedule-rule-form-grid"
+        oninput="scheduleRuleEditorChanged(event)"
+        onchange="scheduleRuleEditorChanged(event)"
+    >
 
         <div class="schedule-rule-field">
 
@@ -3423,6 +3471,13 @@ a:hover {
 
 
     <div
+        id="scheduleRulePreview"
+        class="schedule-rule-preview"
+    >
+    </div>
+
+
+    <div
         id="scheduleRuleError"
         class="schedule-rule-error"
     >
@@ -3436,6 +3491,14 @@ a:hover {
             onclick="closeScheduleRuleEditor()"
         >
             CANCEL
+        </button>
+
+        <button
+            id="scheduleRulePreviewButton"
+            class="secondary"
+            onclick="previewScheduleRule()"
+        >
+            PREVIEW
         </button>
 
         <button
@@ -11808,6 +11871,120 @@ function minerEffectiveState(m) {
 }
 
 
+function scheduleContextHTML(
+    miner
+) {
+
+    const context =
+        miner.schedule_context
+        ||
+        {};
+
+
+    if (
+        miner.driver === "unset"
+        ||
+        !miner.enabled
+        ||
+        !miner.schedule_enabled
+    ) {
+
+        return "";
+    }
+
+
+    if (!context.applicable) {
+
+        return `
+            <div
+                class="schedule-context"
+                title="Effective scheduler context for this ASIC"
+            >
+                Not currently schedulable
+            </div>
+        `;
+    }
+
+
+    let source =
+        "No active rule";
+
+
+    if (context.source_scope) {
+
+        source =
+            context.source_scope;
+
+
+        if (
+            context.source_scope
+            ===
+            "GROUP"
+            &&
+            miner.group_name
+        ) {
+
+            source +=
+                " · "
+                +
+                miner.group_name;
+        }
+
+
+        if (
+            context.rule_id
+            !== null
+            &&
+            context.rule_id
+            !== undefined
+        ) {
+
+            source +=
+                " · Rule #"
+                +
+                context.rule_id;
+        }
+    }
+
+
+    const desired =
+        context.desired_state
+        ? (
+            " · "
+            +
+            context.desired_state
+        )
+        : "";
+
+
+    const next =
+        context.next_transition_label
+        ? (
+            "Next: "
+            +
+            context.next_transition_label
+        )
+        : "No upcoming transition";
+
+
+    return `
+        <div
+            class="schedule-context"
+            title="Effective scheduler context for this ASIC"
+        >
+            <strong>
+                ${esc(source)}
+                ${esc(desired)}
+            </strong>
+
+            <div>
+                ${esc(next)}
+            </div>
+        </div>
+    `;
+}
+
+
 function minerIpValue(ip) {
 
     const parts =
@@ -15459,6 +15636,8 @@ async function loadStatus() {
                         `
                     }
 
+                    ${scheduleContextHTML(m)}
+
                 </td>
 
 
@@ -18936,6 +19115,7 @@ else {
 
 window.__scheduleRulesData = null;
 window.__scheduleRuleEditingId = null;
+window.__scheduleRulePreviewFingerprint = null;
 
 
 function scheduleHtml(value) {
@@ -19718,6 +19898,496 @@ function scheduleRuleScopeChanged() {
 }
 
 
+function scheduleRulePayload() {
+
+    const daysMask =
+        scheduleGetDays();
+
+
+    if (!daysMask) {
+
+        throw new Error(
+            "Select at least one day."
+        );
+    }
+
+
+    const time =
+        document.getElementById(
+            "scheduleRuleTime"
+        ).value;
+
+
+    if (!time) {
+
+        throw new Error(
+            "Select a time."
+        );
+    }
+
+
+    const scope =
+        String(
+            document.getElementById(
+                "scheduleRuleScope"
+            ).value
+            ||
+            "FARM"
+        ).toUpperCase();
+
+
+    let groupId =
+        null;
+
+
+    if (scope === "GROUP") {
+
+        groupId =
+            Number(
+                document.getElementById(
+                    "scheduleRuleGroup"
+                ).value
+            );
+
+
+        if (
+            !Number.isInteger(
+                groupId
+            )
+            ||
+            groupId <= 0
+        ) {
+
+            throw new Error(
+                "Select an operational group."
+            );
+        }
+    }
+
+
+    return {
+        action:
+            document.getElementById(
+                "scheduleRuleAction"
+            ).value,
+
+        time:
+            time,
+
+        days_mask:
+            daysMask,
+
+        scope:
+            scope,
+
+        group_id:
+            groupId,
+
+        comment:
+            document.getElementById(
+                "scheduleRuleComment"
+            ).value,
+
+        enabled:
+            document.getElementById(
+                "scheduleRuleEnabled"
+            ).checked,
+    };
+}
+
+
+function scheduleRulePreviewFingerprint(
+    payload,
+    ruleId
+) {
+
+    return JSON.stringify({
+        rule_id:
+            (
+                ruleId === null
+                ||
+                ruleId === undefined
+            )
+            ? null
+            : Number(
+                ruleId
+            ),
+
+        action:
+            payload.action,
+
+        time:
+            payload.time,
+
+        days_mask:
+            payload.days_mask,
+
+        scope:
+            payload.scope,
+
+        group_id:
+            payload.group_id,
+
+        comment:
+            payload.comment,
+
+        enabled:
+            payload.enabled,
+    });
+}
+
+
+function scheduleRuleEditorChanged(
+    event
+) {
+
+    if (
+        !event
+        ||
+        !event.target
+    ) {
+        return;
+    }
+
+
+    if (
+        !event.target.matches(
+            "input, select"
+        )
+    ) {
+        return;
+    }
+
+
+    scheduleRuleClearPreview();
+}
+
+
+function scheduleRuleClearPreview() {
+
+    window.__scheduleRulePreviewFingerprint =
+        null;
+
+
+    const element =
+        document.getElementById(
+            "scheduleRulePreview"
+        );
+
+
+    if (!element) {
+        return;
+    }
+
+
+    element.innerHTML =
+        "";
+
+    element.classList.remove(
+        "show",
+        "conflict"
+    );
+}
+
+
+function scheduleRuleRenderPreview(
+    data
+) {
+
+    const element =
+        document.getElementById(
+            "scheduleRulePreview"
+        );
+
+
+    if (!element) {
+        return;
+    }
+
+
+    const isGroup =
+        data.scope
+        ===
+        "GROUP";
+
+
+    const scopeText =
+        isGroup
+        ? (
+            "GROUP · "
+            +
+            (
+                data.group_name
+                ||
+                (
+                    "Group #"
+                    +
+                    data.group_id
+                )
+            )
+        )
+        : "FARM";
+
+
+    const affected =
+        Number(
+            data.affected_miner_count
+            ||
+            0
+        );
+
+
+    const membership =
+        isGroup
+        ? (
+            Number(
+                data.group_member_count
+                ||
+                0
+            )
+            +
+            " current group member(s)"
+            +
+            " · dynamic membership"
+        )
+        : "Farm-wide scope";
+
+
+    const conflict =
+        data.conflict;
+
+
+    const conflictHtml =
+        conflict
+        ? `
+            <div
+                class="schedule-rule-preview-row"
+                style="color:#f0a0a0"
+            >
+                <strong>
+                    REJECTED
+                </strong>
+                · conflict with Rule
+                #${Number(conflict.id)}
+                ·
+                ${scheduleHtml(conflict.action)}
+                ${scheduleHtml(conflict.days)}
+                ${scheduleHtml(conflict.time)}
+            </div>
+        `
+        : `
+            <div
+                class="schedule-rule-preview-row"
+                style="color:#72d3a8"
+            >
+                No scheduling conflict detected.
+            </div>
+        `;
+
+
+    element.innerHTML = `
+        <div
+            class="schedule-rule-preview-title"
+        >
+            Server preview
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Scope:</strong>
+            ${scheduleHtml(scopeText)}
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Action:</strong>
+            ${scheduleHtml(data.action)}
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Schedule:</strong>
+            ${scheduleHtml(data.days)}
+            ·
+            ${scheduleHtml(data.time)}
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Affected now:</strong>
+            ${affected}
+            schedulable ASIC(s)
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Membership:</strong>
+            ${scheduleHtml(membership)}
+        </div>
+
+        <div
+            class="schedule-rule-preview-row"
+        >
+            <strong>Next run:</strong>
+            ${scheduleHtml(
+                data.next_run_label
+                ||
+                (
+                    data.enabled
+                    ? "—"
+                    : "Rule is disabled"
+                )
+            )}
+        </div>
+
+        ${conflictHtml}
+    `;
+
+
+    element.classList.add(
+        "show"
+    );
+
+
+    element.classList.toggle(
+        "conflict",
+        !data.allowed
+    );
+}
+
+
+async function previewScheduleRule() {
+
+    const button =
+        document.getElementById(
+            "scheduleRulePreviewButton"
+        );
+
+
+    const ruleId =
+        window.__scheduleRuleEditingId;
+
+
+    let payload;
+
+
+    try {
+
+        payload =
+            scheduleRulePayload();
+
+    }
+    catch (error) {
+
+        scheduleRuleClearPreview();
+
+        scheduleRuleShowError(
+            error.message
+        );
+
+        return;
+    }
+
+
+    const requestPayload = {
+        ...payload,
+    };
+
+
+    if (ruleId !== null) {
+
+        requestPayload.rule_id =
+            Number(
+                ruleId
+            );
+    }
+
+
+    const fingerprint =
+        scheduleRulePreviewFingerprint(
+            payload,
+            ruleId
+        );
+
+
+    try {
+
+        button.disabled =
+            true;
+
+
+        scheduleRuleShowError(
+            ""
+        );
+
+
+        const data =
+            await scheduleApi(
+                "/api/schedule/preview",
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+                    },
+
+                    body:
+                        JSON.stringify(
+                            requestPayload
+                        ),
+                }
+            );
+
+
+        scheduleRuleRenderPreview(
+            data
+        );
+
+
+        window.__scheduleRulePreviewFingerprint =
+            data.allowed
+            ? fingerprint
+            : null;
+
+
+        if (!data.allowed) {
+
+            scheduleRuleShowError(
+                "Server preview rejected "
+                +
+                "this rule because it "
+                +
+                "conflicts with an "
+                +
+                "existing enabled rule."
+            );
+        }
+
+    }
+    catch (error) {
+
+        scheduleRuleClearPreview();
+
+        scheduleRuleShowError(
+            error.message
+        );
+
+    }
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
 function openScheduleRuleEditor(
     ruleId = null
 ) {
@@ -19871,6 +20541,9 @@ function openScheduleRuleEditor(
     );
 
 
+    scheduleRuleClearPreview();
+
+
     document.getElementById(
         "scheduleRuleBackdrop"
     ).classList.add(
@@ -19895,6 +20568,9 @@ function closeScheduleRuleEditor() {
     scheduleRuleShowError(
         ""
     );
+
+
+    scheduleRuleClearPreview();
 }
 
 
@@ -19925,106 +20601,50 @@ async function saveScheduleRule() {
         window.__scheduleRuleEditingId;
 
 
-    const daysMask =
-        scheduleGetDays();
+    let payload;
 
 
-    if (!daysMask) {
+    try {
+
+        payload =
+            scheduleRulePayload();
+
+    }
+    catch (error) {
 
         scheduleRuleShowError(
-            "Select at least one day."
+            error.message
         );
 
         return;
     }
 
 
-    const time =
-        document.getElementById(
-            "scheduleRuleTime"
-        ).value;
+    const fingerprint =
+        scheduleRulePreviewFingerprint(
+            payload,
+            ruleId
+        );
 
 
-    if (!time) {
+    if (
+        window.__scheduleRulePreviewFingerprint
+        !==
+        fingerprint
+    ) {
 
         scheduleRuleShowError(
-            "Select a time."
+            "Preview this exact rule before saving. "
+            +
+            "Any scope, group, action, day, time "
+            +
+            "or enabled-state change requires "
+            +
+            "a new server preview."
         );
 
         return;
     }
-
-
-    const scope =
-        String(
-            document.getElementById(
-                "scheduleRuleScope"
-            ).value
-            ||
-            "FARM"
-        ).toUpperCase();
-
-
-    let groupId =
-        null;
-
-
-    if (scope === "GROUP") {
-
-        groupId =
-            Number(
-                document.getElementById(
-                    "scheduleRuleGroup"
-                ).value
-            );
-
-
-        if (
-            !Number.isInteger(
-                groupId
-            )
-            ||
-            groupId <= 0
-        ) {
-
-            scheduleRuleShowError(
-                "Select an operational group."
-            );
-
-            return;
-        }
-    }
-
-
-    const payload = {
-
-        action:
-            document.getElementById(
-                "scheduleRuleAction"
-            ).value,
-
-        time:
-            time,
-
-        days_mask:
-            daysMask,
-
-        scope:
-            scope,
-
-        group_id:
-            groupId,
-
-        comment:
-            document.getElementById(
-                "scheduleRuleComment"
-            ).value,
-
-        enabled:
-            document.getElementById(
-                "scheduleRuleEnabled"
-            ).checked,
-    };
 
 
     const url =
@@ -20052,6 +20672,7 @@ async function saveScheduleRule() {
         button.disabled =
             true;
 
+
         scheduleRuleShowError(
             ""
         );
@@ -20078,6 +20699,7 @@ async function saveScheduleRule() {
 
         closeScheduleRuleEditor();
 
+
         await loadScheduleRules();
 
 
@@ -20096,6 +20718,7 @@ async function saveScheduleRule() {
         scheduleRuleShowError(
             error.message
         );
+
     }
     finally {
 
@@ -20124,6 +20747,151 @@ async function toggleScheduleRule(
         rule.enabled
         ? "Disable"
         : "Enable";
+
+
+    let enablePreview =
+        null;
+
+
+    /*
+     * Disabling a rule is safe and does not need preview.
+     *
+     * Enabling a rule can introduce a new effective schedule,
+     * therefore the server must validate it first.
+     */
+    if (!rule.enabled) {
+
+        const previewPayload = {
+            rule_id:
+                Number(
+                    rule.id
+                ),
+
+            action:
+                rule.action,
+
+            time:
+                rule.time,
+
+            days_mask:
+                rule.days_mask,
+
+            scope:
+                rule.scope
+                ||
+                "FARM",
+
+            group_id:
+                (
+                    rule.group_id
+                    === undefined
+                    ? null
+                    : rule.group_id
+                ),
+
+            comment:
+                rule.comment
+                ||
+                "",
+
+            enabled:
+                true,
+        };
+
+
+        try {
+
+            enablePreview =
+                await scheduleApi(
+                    "/api/schedule/preview",
+                    {
+                        method:
+                            "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+                        },
+
+                        body:
+                            JSON.stringify(
+                                previewPayload
+                            ),
+                    }
+                );
+
+        }
+        catch (error) {
+
+            window.alert(
+                "Rule cannot be enabled: "
+                +
+                error.message
+            );
+
+            return;
+        }
+
+
+        if (!enablePreview.allowed) {
+
+            const conflict =
+                enablePreview.conflict;
+
+
+            window.alert(
+                "Rule cannot be enabled."
+                +
+                (
+                    conflict
+                    ? (
+                        "\n\nConflict with Rule #"
+                        +
+                        conflict.id
+                        +
+                        " · "
+                        +
+                        conflict.action
+                        +
+                        " "
+                        +
+                        conflict.days
+                        +
+                        " "
+                        +
+                        conflict.time
+                    )
+                    : ""
+                )
+            );
+
+            return;
+        }
+    }
+
+
+    const previewSummary =
+        enablePreview
+        ? (
+            "\nAffected now: "
+            +
+            Number(
+                enablePreview[
+                    "affected_miner_count"
+                ]
+                ||
+                0
+            )
+            +
+            " schedulable ASIC(s)"
+            +
+            (
+                enablePreview.dynamic_membership
+                ? "\nMembership: dynamic"
+                : ""
+            )
+        )
+        : "";
 
 
     if (
@@ -20167,6 +20935,8 @@ async function toggleScheduleRule(
                 )
                 : "FARM"
             )
+            +
+            previewSummary
         )
     ) {
 

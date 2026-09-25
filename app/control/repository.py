@@ -9,6 +9,9 @@ __all__ = (
     "get_control_job",
     "get_active_control_job",
     "list_active_control_jobs",
+    "get_bulk_control_group",
+    "list_bulk_control_miners_by_ids",
+    "list_bulk_control_miners_by_group",
     "list_control_jobs",
     "update_control_job",
     "set_last_command",
@@ -66,6 +69,125 @@ def get_active_control_job(miner_id):
         """, (
             miner_id,
         )).fetchone()
+    finally:
+        conn.close()
+
+
+def _bulk_control_selection_query(
+    where_sql,
+):
+    return f"""
+        SELECT
+            m.*,
+            g.name AS group_name,
+
+            cj.id AS active_job_id,
+            cj.status AS active_job_status,
+            cj.action AS active_job_action,
+            cj.target_state AS active_job_target_state
+
+        FROM miners m
+
+        LEFT JOIN miner_groups g
+            ON g.id=m.group_id
+
+        LEFT JOIN control_jobs cj
+            ON cj.id=(
+                SELECT active.id
+
+                FROM control_jobs active
+
+                WHERE
+                    active.miner_id=m.id
+                    AND active.status IN (
+                        'QUEUED',
+                        'RUNNING'
+                    )
+
+                ORDER BY active.id DESC
+
+                LIMIT 1
+            )
+
+        WHERE {where_sql}
+
+        ORDER BY m.id
+    """
+
+
+def get_bulk_control_group(
+    group_id,
+):
+    conn = db()
+
+    try:
+        return conn.execute("""
+            SELECT
+                id,
+                name
+
+            FROM miner_groups
+
+            WHERE id=?
+        """, (
+            int(group_id),
+        )).fetchone()
+
+    finally:
+        conn.close()
+
+
+def list_bulk_control_miners_by_ids(
+    miner_ids,
+):
+    miner_ids = [
+        int(miner_id)
+        for miner_id
+        in miner_ids
+    ]
+
+    if not miner_ids:
+        return []
+
+    placeholders = ",".join(
+        "?"
+        for _
+        in miner_ids
+    )
+
+    conn = db()
+
+    try:
+        return list(
+            conn.execute(
+                _bulk_control_selection_query(
+                    f"m.id IN ({placeholders})"
+                ),
+                miner_ids,
+            ).fetchall()
+        )
+
+    finally:
+        conn.close()
+
+
+def list_bulk_control_miners_by_group(
+    group_id,
+):
+    conn = db()
+
+    try:
+        return list(
+            conn.execute(
+                _bulk_control_selection_query(
+                    "m.group_id=?"
+                ),
+                (
+                    int(group_id),
+                ),
+            ).fetchall()
+        )
+
     finally:
         conn.close()
 

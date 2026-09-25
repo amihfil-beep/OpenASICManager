@@ -27,6 +27,8 @@ class ControlRoutesTests(unittest.TestCase):
             "/api/miners/{miner_id}/control/{action}",
             "/api/all/{action}",
             "/api/miners/{miner_id}/reboot",
+            "/api/control/bulk/preview/{action}",
+            "/api/control/bulk/{action}",
         })
 
     def test_miner_action_rejects_invalid_action(self):

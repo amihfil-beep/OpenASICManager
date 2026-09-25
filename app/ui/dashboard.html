@@ -1775,6 +1775,16 @@ a:hover {
         ⏸ PAUSE ALL
     </button>
 
+
+    <button
+        id="bulkControlButton"
+        class="secondary"
+        onclick="openBulkControl()"
+        title="Explicit bounded control for selected ASICs or one operational group"
+    >
+        BULK CONTROL
+    </button>
+
     <button
         id="schedulerButton"
         class="scheduler-off"
@@ -2586,6 +2596,227 @@ a:hover {
 </div>
 
 
+<div
+    id="bulkControlBackdrop"
+    class="modal-backdrop"
+    onclick="bulkControlBackdropClick(event)"
+>
+
+<div
+    class="history-modal"
+    onclick="event.stopPropagation()"
+    style="max-width:1200px"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2 style="margin:0">
+                Safe Bulk ASIC Control
+            </h2>
+
+            <div
+                class="muted"
+                style="margin-top:5px"
+            >
+                Explicit operator orchestration only.
+                Every accepted ASIC receives its own existing
+                verified control job.
+                Maximum batch size: 50 ASICs.
+            </div>
+
+        </div>
+
+
+        <button
+            class="close-button"
+            onclick="closeBulkControl()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div
+        class="history-controls"
+        style="
+            align-items:flex-end;
+            gap:14px;
+        "
+    >
+
+        <div>
+
+            <div class="muted small">
+                Selection source
+            </div>
+
+            <select
+                id="bulkControlSource"
+                onchange="bulkControlSourceChanged()"
+            >
+                <option value="SELECTED">
+                    Selected ASICs
+                </option>
+
+                <option value="GROUP">
+                    Operational group
+                </option>
+            </select>
+
+        </div>
+
+
+        <div>
+
+            <div class="muted small">
+                Group
+            </div>
+
+            <select
+                id="bulkControlGroup"
+                disabled
+                onchange="bulkControlInvalidatePreview()"
+            >
+            </select>
+
+        </div>
+
+
+        <div>
+
+            <div class="muted small">
+                Action
+            </div>
+
+            <select
+                id="bulkControlAction"
+                onchange="bulkControlInvalidatePreview()"
+            >
+                <option value="pause">
+                    PAUSE
+                </option>
+
+                <option value="resume">
+                    RESUME
+                </option>
+
+                <option value="reboot">
+                    REBOOT
+                </option>
+            </select>
+
+        </div>
+
+
+        <div
+            id="bulkControlSelectionSummary"
+            class="muted small"
+            style="
+                min-width:190px;
+                padding-bottom:8px;
+            "
+        >
+            0 ASICs selected
+        </div>
+
+
+        <button
+            id="bulkControlPreviewButton"
+            class="secondary"
+            onclick="previewBulkControl()"
+        >
+            PREVIEW
+        </button>
+
+
+        <button
+            id="bulkControlSubmitButton"
+            class="warning-button"
+            onclick="submitBulkControl()"
+            disabled
+        >
+            SUBMIT
+        </button>
+
+
+        <button
+            id="bulkControlRefreshButton"
+            class="secondary"
+            onclick="refreshBulkControlProgress()"
+            disabled
+        >
+            REFRESH RESULTS
+        </button>
+
+    </div>
+
+
+    <div
+        class="muted small"
+        style="
+            margin:-4px 0 12px;
+            line-height:1.5;
+        "
+    >
+        Preview is mandatory before submission.
+        Disabled ASICs, unsupported firmware, missing ASICs,
+        and ASICs with an active control job are reported
+        explicitly and are not silently skipped.
+        REBOOT requires an additional typed confirmation.
+    </div>
+
+
+    <div
+        id="bulkControlStatus"
+        class="history-status"
+    >
+        Select ASICs or a group, then request PREVIEW.
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table style="min-width:1050px">
+
+            <thead>
+
+                <tr>
+                    <th>ASIC</th>
+                    <th>IP</th>
+                    <th>Group</th>
+                    <th>Firmware</th>
+                    <th>Eligibility</th>
+                    <th>Job</th>
+                    <th>Status / result</th>
+                    <th>Details</th>
+                </tr>
+
+            </thead>
+
+            <tbody
+                id="bulkControlRows"
+            >
+
+                <tr>
+                    <td colspan="8">
+                        No preview yet.
+                    </td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+</div>
+
+
 <div class="table-wrap">
 
 <table class="miner-table">
@@ -2593,6 +2824,21 @@ a:hover {
 <thead>
 
 <tr>
+
+    <th
+        title="Select visible ASICs for bounded bulk control"
+    >
+        <input
+            id="bulkControlSelectVisible"
+            type="checkbox"
+            onchange="
+                bulkControlSelectAllVisible(
+                    this.checked
+                )
+            "
+        >
+    </th>
+
 
     <th
         class="sortable-th"
@@ -12890,6 +13136,18 @@ function renderMinerGroupRows() {
                     <button
                         class="secondary mini"
                         onclick="
+                            openBulkControl(
+                                ${Number(group.id)}
+                            )
+                        "
+                        title="Open bounded bulk control for this group"
+                    >
+                        CONTROL
+                    </button>
+
+                    <button
+                        class="secondary mini"
+                        onclick="
                             openGroupAnomalyPolicy(
                                 ${Number(group.id)}
                             )
@@ -12989,6 +13247,8 @@ async function loadMinerGroups() {
         renderMinerGroupRows();
 
         maintenancePopulateGroups();
+
+        bulkControlPopulateGroups();
 
         renderOperationalGroupFilters();
 
@@ -15066,6 +15326,11 @@ async function loadStatus() {
             <tr class="${rowClass}">
 
                 <td>
+                    ${bulkControlMinerCheckboxHTML(m)}
+                </td>
+
+
+                <td>
 
                     <strong>
                         ${esc(m.name)}
@@ -15388,6 +15653,9 @@ async function loadStatus() {
             html;
 
 
+        bulkControlSyncSelectionUI();
+
+
         document.getElementById(
             "countOnline"
         ).textContent =
@@ -15595,6 +15863,1500 @@ async function loadLogs() {
         );
     }
 }
+
+
+// ============================================================
+// SAFE BULK ASIC CONTROL
+// ============================================================
+
+window.__bulkSelectedMinerIds =
+    window.__bulkSelectedMinerIds
+    || new Set();
+
+window.__bulkControlPreview =
+    null;
+
+window.__bulkControlPreviewFingerprint =
+    null;
+
+window.__bulkControlExecution =
+    null;
+
+window.__bulkControlJobIds =
+    [];
+
+window.__bulkControlProgressTimer =
+    null;
+
+
+function bulkControlSelectedIds() {
+
+    return Array.from(
+        window.__bulkSelectedMinerIds
+    )
+    .map(
+        value => Number(value)
+    )
+    .filter(
+        value =>
+            Number.isInteger(value)
+            &&
+            value > 0
+    )
+    .sort(
+        (a, b) => a - b
+    );
+}
+
+
+function bulkControlMinerCheckboxHTML(
+    miner
+) {
+
+    const id =
+        Number(
+            miner.id
+        );
+
+    const checked =
+        window.__bulkSelectedMinerIds
+        .has(id);
+
+
+    return `
+        <input
+            type="checkbox"
+            class="bulk-miner-checkbox"
+            data-bulk-miner-id="${id}"
+            aria-label="Select ${esc(miner.name)} for bulk control"
+            ${checked ? "checked" : ""}
+            onchange="
+                bulkControlMinerSelectionChanged(
+                    ${id},
+                    this.checked
+                )
+            "
+        >
+    `;
+}
+
+
+function bulkControlMinerSelectionChanged(
+    minerId,
+    checked
+) {
+
+    const id =
+        Number(
+            minerId
+        );
+
+
+    if (checked) {
+
+        window.__bulkSelectedMinerIds
+        .add(id);
+
+    }
+
+    else {
+
+        window.__bulkSelectedMinerIds
+        .delete(id);
+    }
+
+
+    bulkControlInvalidatePreview();
+
+    bulkControlSyncSelectionUI();
+}
+
+
+function bulkControlSelectAllVisible(
+    checked
+) {
+
+    const boxes =
+        Array.from(
+            document.querySelectorAll(
+                ".bulk-miner-checkbox"
+            )
+        );
+
+
+    for (
+        const box
+        of boxes
+    ) {
+
+        const id =
+            Number(
+                box.dataset.bulkMinerId
+            );
+
+
+        box.checked =
+            Boolean(
+                checked
+            );
+
+
+        if (checked) {
+
+            window.__bulkSelectedMinerIds
+            .add(id);
+
+        }
+
+        else {
+
+            window.__bulkSelectedMinerIds
+            .delete(id);
+        }
+    }
+
+
+    bulkControlInvalidatePreview();
+
+    bulkControlSyncSelectionUI();
+}
+
+
+function bulkControlSyncSelectionUI() {
+
+    const selected =
+        bulkControlSelectedIds();
+
+
+    const summary =
+        document.getElementById(
+            "bulkControlSelectionSummary"
+        );
+
+
+    if (summary) {
+
+        summary.textContent =
+            (
+                selected.length
+                +
+                " ASIC(s) explicitly selected"
+            );
+    }
+
+
+    const visibleBoxes =
+        Array.from(
+            document.querySelectorAll(
+                ".bulk-miner-checkbox"
+            )
+        );
+
+
+    const header =
+        document.getElementById(
+            "bulkControlSelectVisible"
+        );
+
+
+    if (header) {
+
+        const selectedVisible =
+            visibleBoxes.filter(
+                box => box.checked
+            ).length;
+
+
+        header.checked =
+            (
+                visibleBoxes.length > 0
+                &&
+                selectedVisible
+                ===
+                visibleBoxes.length
+            );
+
+
+        header.indeterminate =
+            (
+                selectedVisible > 0
+                &&
+                selectedVisible
+                <
+                visibleBoxes.length
+            );
+    }
+}
+
+
+function bulkControlPopulateGroups() {
+
+    const select =
+        document.getElementById(
+            "bulkControlGroup"
+        );
+
+
+    if (!select) {
+        return;
+    }
+
+
+    const current =
+        select.value;
+
+
+    const groups =
+        minerGroupList();
+
+
+    if (!groups.length) {
+
+        select.innerHTML = `
+            <option value="">
+                No groups configured
+            </option>
+        `;
+
+        return;
+    }
+
+
+    select.innerHTML =
+        groups.map(
+            group => `
+                <option
+                    value="${Number(group.id)}"
+                >
+                    ${esc(group.name)}
+                    ·
+                    ${Number(
+                        group.member_count
+                        || 0
+                    )}
+                    ASIC(s)
+                </option>
+            `
+        )
+        .join("");
+
+
+    if (
+        groups.some(
+            group =>
+                String(group.id)
+                === String(current)
+        )
+    ) {
+
+        select.value =
+            current;
+    }
+}
+
+
+function bulkControlSourceChanged() {
+
+    const source =
+        document.getElementById(
+            "bulkControlSource"
+        )?.value
+        || "SELECTED";
+
+
+    const group =
+        document.getElementById(
+            "bulkControlGroup"
+        );
+
+
+    if (group) {
+
+        group.disabled =
+            source !== "GROUP";
+    }
+
+
+    bulkControlInvalidatePreview();
+
+    bulkControlSyncSelectionUI();
+}
+
+
+function bulkControlSelectionPayload() {
+
+    const source =
+        document.getElementById(
+            "bulkControlSource"
+        )?.value
+        || "SELECTED";
+
+
+    if (source === "GROUP") {
+
+        const groupId =
+            Number(
+                document.getElementById(
+                    "bulkControlGroup"
+                )?.value
+            );
+
+
+        if (
+            !Number.isInteger(groupId)
+            ||
+            groupId <= 0
+        ) {
+
+            throw new Error(
+                "Select an operational group."
+            );
+        }
+
+
+        return {
+            group_id:
+                groupId
+        };
+    }
+
+
+    const minerIds =
+        bulkControlSelectedIds();
+
+
+    if (!minerIds.length) {
+
+        throw new Error(
+            "Select at least one ASIC."
+        );
+    }
+
+
+    return {
+        miner_ids:
+            minerIds
+    };
+}
+
+
+function bulkControlFingerprint(
+    action,
+    payload
+) {
+
+    const normalized = {
+        action:
+            String(action),
+
+        group_id:
+            payload.group_id
+            ?? null,
+
+        miner_ids:
+            Array.isArray(
+                payload.miner_ids
+            )
+            ? [
+                ...payload.miner_ids
+            ].sort(
+                (a, b) =>
+                    Number(a)
+                    -
+                    Number(b)
+            )
+            : null,
+    };
+
+
+    return JSON.stringify(
+        normalized
+    );
+}
+
+
+function bulkControlClearProgressTimer() {
+
+    if (
+        window.__bulkControlProgressTimer
+        !== null
+    ) {
+
+        clearTimeout(
+            window.__bulkControlProgressTimer
+        );
+
+        window.__bulkControlProgressTimer =
+            null;
+    }
+}
+
+
+function bulkControlInvalidatePreview() {
+
+    window.__bulkControlPreview =
+        null;
+
+    window.__bulkControlPreviewFingerprint =
+        null;
+
+    window.__bulkControlExecution =
+        null;
+
+    window.__bulkControlJobIds =
+        [];
+
+
+    bulkControlClearProgressTimer();
+
+
+    const submit =
+        document.getElementById(
+            "bulkControlSubmitButton"
+        );
+
+    const refresh =
+        document.getElementById(
+            "bulkControlRefreshButton"
+        );
+
+
+    if (submit) {
+        submit.disabled = true;
+    }
+
+
+    if (refresh) {
+        refresh.disabled = true;
+    }
+
+
+    const rows =
+        document.getElementById(
+            "bulkControlRows"
+        );
+
+
+    if (rows) {
+
+        rows.innerHTML = `
+            <tr>
+                <td colspan="8">
+                    Preview required.
+                </td>
+            </tr>
+        `;
+    }
+
+
+    const status =
+        document.getElementById(
+            "bulkControlStatus"
+        );
+
+
+    if (status) {
+
+        status.textContent =
+            "Selection/action changed. Request a new server preview.";
+    }
+}
+
+
+function bulkControlTargetIdentity(
+    target
+) {
+
+    return (
+        target.name
+        ||
+        (
+            "ASIC #"
+            +
+            Number(
+                target.miner_id
+            )
+        )
+    );
+}
+
+
+function renderBulkControlPreview(
+    data
+) {
+
+    const rows =
+        document.getElementById(
+            "bulkControlRows"
+        );
+
+
+    rows.innerHTML =
+        data.targets.map(
+            target => {
+
+                const eligibility =
+                    target.eligible
+                    ? "ELIGIBLE"
+                    : (
+                        target.rejection_code
+                        || "REJECTED"
+                    );
+
+
+                const details =
+                    target.eligible
+                    ? (
+                        "Ready for existing "
+                        +
+                        "verified per-miner queue"
+                    )
+                    : (
+                        target.rejection_reason
+                        || ""
+                    );
+
+
+                const activeJob =
+                    target.active_job;
+
+
+                return `
+                    <tr>
+
+                        <td>
+                            <strong>
+                                ${esc(
+                                    bulkControlTargetIdentity(
+                                        target
+                                    )
+                                )}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${esc(
+                                target.ip
+                                || "—"
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                target.group_name
+                                || "Ungrouped"
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                target.driver
+                                || "—"
+                            )}
+                        </td>
+
+                        <td
+                            class="${
+                                target.eligible
+                                ? "log-ok"
+                                : "log-fail"
+                            }"
+                        >
+                            ${esc(eligibility)}
+                        </td>
+
+                        <td>
+                            ${
+                                activeJob
+                                ? (
+                                    "#"
+                                    +
+                                    Number(
+                                        activeJob.job_id
+                                    )
+                                )
+                                : "—"
+                            }
+                        </td>
+
+                        <td>
+                            ${
+                                activeJob
+                                ? esc(
+                                    activeJob.status
+                                )
+                                : "—"
+                            }
+                        </td>
+
+                        <td class="small">
+                            ${esc(details)}
+                        </td>
+
+                    </tr>
+                `;
+            }
+        )
+        .join("");
+
+
+    document.getElementById(
+        "bulkControlStatus"
+    ).textContent =
+        (
+            data.action.toUpperCase()
+            +
+            " preview · requested "
+            +
+            data.requested_count
+            +
+            " · eligible "
+            +
+            data.eligible_count
+            +
+            " · rejected "
+            +
+            data.rejected_count
+        );
+
+
+    document.getElementById(
+        "bulkControlSubmitButton"
+    ).disabled =
+        data.eligible_count <= 0;
+}
+
+
+async function previewBulkControl() {
+
+    const status =
+        document.getElementById(
+            "bulkControlStatus"
+        );
+
+    const button =
+        document.getElementById(
+            "bulkControlPreviewButton"
+        );
+
+
+    button.disabled =
+        true;
+
+
+    try {
+
+        const action =
+            document.getElementById(
+                "bulkControlAction"
+            ).value;
+
+
+        const payload =
+            bulkControlSelectionPayload();
+
+
+        status.textContent =
+            "Requesting server eligibility preview...";
+
+
+        const response =
+            await fetch(
+                "/api/control/bulk/preview/"
+                +
+                encodeURIComponent(
+                    action
+                ),
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Bulk preview failed"
+            );
+        }
+
+
+        window.__bulkControlPreview =
+            data;
+
+
+        window.__bulkControlPreviewFingerprint =
+            bulkControlFingerprint(
+                action,
+                payload
+            );
+
+
+        renderBulkControlPreview(
+            data
+        );
+
+    }
+
+    catch (error) {
+
+        bulkControlInvalidatePreview();
+
+
+        status.textContent =
+            (
+                "PREVIEW ERROR: "
+                +
+                error.message
+            );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+function bulkControlConfirmation(
+    action,
+    preview
+) {
+
+    if (action === "reboot") {
+
+        const phrase =
+            (
+                "REBOOT "
+                +
+                preview.eligible_count
+            );
+
+
+        const typed =
+            prompt(
+                "FULL REBOOT BULK OPERATION\\n\\n"
+                +
+                "Eligible ASICs: "
+                +
+                preview.eligible_count
+                +
+                "\\nRejected ASICs: "
+                +
+                preview.rejected_count
+                +
+                "\\n\\n"
+                +
+                "Every accepted ASIC will receive "
+                +
+                "its own verified reboot job."
+                +
+                "\\n\\n"
+                +
+                "Type exactly: "
+                +
+                phrase
+        );
+
+
+        return typed === phrase;
+    }
+
+
+    return confirm(
+        action.toUpperCase()
+        +
+        " BULK OPERATION\\n\\n"
+        +
+        "Eligible ASICs: "
+        +
+        preview.eligible_count
+        +
+        "\\nRejected ASICs: "
+        +
+        preview.rejected_count
+        +
+        "\\n\\n"
+        +
+        "Each accepted ASIC will enter its own "
+        +
+        "existing verified control-job lifecycle."
+    );
+}
+
+
+function renderBulkControlExecution(
+    data,
+    jobsById=null
+) {
+
+    const rows =
+        document.getElementById(
+            "bulkControlRows"
+        );
+
+
+    rows.innerHTML =
+        data.results.map(
+            result => {
+
+                let job =
+                    null;
+
+
+                if (
+                    result.job_id
+                    &&
+                    jobsById
+                ) {
+
+                    job =
+                        jobsById.get(
+                            Number(
+                                result.job_id
+                            )
+                        )
+                        ||
+                        null;
+                }
+
+
+                let outcome =
+                    result.accepted
+                    ? (
+                        job
+                        ? job.status
+                        : (
+                            result.job_status
+                            || "QUEUED"
+                        )
+                    )
+                    : (
+                        result.rejection_code
+                        || "REJECTED"
+                    );
+
+
+                let details =
+                    result.accepted
+                    ? (
+                        job
+                        ? (
+                            (
+                                job.final_state
+                                ? (
+                                    "final="
+                                    +
+                                    job.final_state
+                                    +
+                                    " · "
+                                )
+                                : ""
+                            )
+                            +
+                            (
+                                job.message
+                                || ""
+                            )
+                        )
+                        : (
+                            "Queued in existing "
+                            +
+                            "per-miner control pipeline"
+                        )
+                    )
+                    : (
+                        result.rejection_reason
+                        || ""
+                    );
+
+
+                return `
+                    <tr>
+
+                        <td>
+                            <strong>
+                                ${esc(
+                                    bulkControlTargetIdentity(
+                                        result
+                                    )
+                                )}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${esc(
+                                result.ip
+                                || "—"
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                result.group_name
+                                || "Ungrouped"
+                            )}
+                        </td>
+
+                        <td>
+                            ${esc(
+                                result.driver
+                                || "—"
+                            )}
+                        </td>
+
+                        <td
+                            class="${
+                                result.accepted
+                                ? "log-ok"
+                                : "log-fail"
+                            }"
+                        >
+                            ${
+                                result.accepted
+                                ? "ACCEPTED"
+                                : "REJECTED"
+                            }
+                        </td>
+
+                        <td>
+                            ${
+                                result.job_id
+                                ? (
+                                    "#"
+                                    +
+                                    Number(
+                                        result.job_id
+                                    )
+                                )
+                                : "—"
+                            }
+                        </td>
+
+                        <td
+                            class="${
+                                outcome === "VERIFIED"
+                                ? "log-ok"
+                                : (
+                                    outcome === "FAILED"
+                                    ||
+                                    !result.accepted
+                                    ? "log-fail"
+                                    : ""
+                                )
+                            }"
+                        >
+                            ${esc(outcome)}
+                        </td>
+
+                        <td class="small">
+                            ${esc(details)}
+                        </td>
+
+                    </tr>
+                `;
+            }
+        )
+        .join("");
+}
+
+
+async function submitBulkControl() {
+
+    const status =
+        document.getElementById(
+            "bulkControlStatus"
+        );
+
+    const submit =
+        document.getElementById(
+            "bulkControlSubmitButton"
+        );
+
+
+    try {
+
+        const action =
+            document.getElementById(
+                "bulkControlAction"
+            ).value;
+
+
+        const payload =
+            bulkControlSelectionPayload();
+
+
+        const fingerprint =
+            bulkControlFingerprint(
+                action,
+                payload
+            );
+
+
+        if (
+            !window.__bulkControlPreview
+            ||
+            fingerprint
+            !==
+            window.__bulkControlPreviewFingerprint
+        ) {
+
+            throw new Error(
+                "Server preview is required for the current selection and action."
+            );
+        }
+
+
+        if (
+            !bulkControlConfirmation(
+                action,
+                window.__bulkControlPreview
+            )
+        ) {
+
+            status.textContent =
+                "Bulk operation cancelled.";
+
+            return;
+        }
+
+
+        if (action === "reboot") {
+
+            payload.confirm_reboot =
+                true;
+        }
+
+
+        submit.disabled =
+            true;
+
+
+        status.textContent =
+            (
+                "Submitting "
+                +
+                action.toUpperCase()
+                +
+                " to existing per-miner queues..."
+            );
+
+
+        const response =
+            await fetch(
+                "/api/control/bulk/"
+                +
+                encodeURIComponent(
+                    action
+                ),
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Bulk submission failed"
+            );
+        }
+
+
+        window.__bulkControlExecution =
+            data;
+
+
+        window.__bulkControlJobIds =
+            data.results
+            .filter(
+                result =>
+                    result.accepted
+                    &&
+                    result.job_id
+            )
+            .map(
+                result =>
+                    Number(
+                        result.job_id
+                    )
+            );
+
+
+        renderBulkControlExecution(
+            data
+        );
+
+
+        document.getElementById(
+            "bulkControlRefreshButton"
+        ).disabled =
+            window.__bulkControlJobIds
+            .length === 0;
+
+
+        status.textContent =
+            (
+                data.action.toUpperCase()
+                +
+                " submitted · accepted "
+                +
+                data.accepted_count
+                +
+                " · rejected "
+                +
+                data.rejected_count
+                +
+                " · each accepted target now has "
+                +
+                "its own control job"
+            );
+
+
+        await loadStatus();
+
+        await loadLogs();
+
+
+        if (
+            window.__bulkControlJobIds.length
+        ) {
+
+            await refreshBulkControlProgress();
+        }
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "SUBMIT ERROR: "
+                +
+                error.message
+            );
+
+
+        submit.disabled =
+            false;
+    }
+}
+
+
+async function refreshBulkControlProgress() {
+
+    bulkControlClearProgressTimer();
+
+
+    if (
+        !window.__bulkControlExecution
+        ||
+        !window.__bulkControlJobIds.length
+    ) {
+        return;
+    }
+
+
+    const status =
+        document.getElementById(
+            "bulkControlStatus"
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/control/jobs?limit=500"
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Control job refresh failed"
+            );
+        }
+
+
+        const jobsById =
+            new Map(
+                (
+                    Array.isArray(
+                        data.jobs
+                    )
+                    ? data.jobs
+                    : []
+                ).map(
+                    job => [
+                        Number(job.id),
+                        job,
+                    ]
+                )
+            );
+
+
+        renderBulkControlExecution(
+            window.__bulkControlExecution,
+            jobsById
+        );
+
+
+        let verified = 0;
+        let failed = 0;
+        let pending = 0;
+
+
+        for (
+            const jobId
+            of window.__bulkControlJobIds
+        ) {
+
+            const job =
+                jobsById.get(
+                    Number(jobId)
+                );
+
+
+            if (!job) {
+
+                pending++;
+                continue;
+            }
+
+
+            if (
+                job.status
+                === "VERIFIED"
+            ) {
+
+                verified++;
+            }
+
+            else if (
+                job.status
+                === "FAILED"
+            ) {
+
+                failed++;
+            }
+
+            else {
+
+                pending++;
+            }
+        }
+
+
+        status.textContent =
+            (
+                "Bulk progress · accepted "
+                +
+                window.__bulkControlExecution
+                .accepted_count
+                +
+                " · verified "
+                +
+                verified
+                +
+                " · failed "
+                +
+                failed
+                +
+                " · pending "
+                +
+                pending
+                +
+                " · rejected "
+                +
+                window.__bulkControlExecution
+                .rejected_count
+            );
+
+
+        await loadStatus();
+
+
+        if (pending > 0) {
+
+            window.__bulkControlProgressTimer =
+                setTimeout(
+                    refreshBulkControlProgress,
+                    2000
+                );
+        }
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "PROGRESS ERROR: "
+                +
+                error.message
+            );
+    }
+}
+
+
+async function openBulkControl(
+    groupId=null
+) {
+
+    const backdrop =
+        document.getElementById(
+            "bulkControlBackdrop"
+        );
+
+
+    backdrop.classList.add(
+        "open"
+    );
+
+
+    document.body.style.overflow =
+        "hidden";
+
+
+    try {
+
+        await loadMinerGroups();
+
+    }
+
+    catch (error) {
+
+        console.error(
+            error
+        );
+    }
+
+
+    bulkControlPopulateGroups();
+
+
+    if (
+        groupId !== null
+        &&
+        groupId !== undefined
+    ) {
+
+        document.getElementById(
+            "bulkControlSource"
+        ).value =
+            "GROUP";
+
+
+        document.getElementById(
+            "bulkControlGroup"
+        ).value =
+            String(
+                groupId
+            );
+    }
+
+
+    bulkControlSourceChanged();
+
+    bulkControlSyncSelectionUI();
+}
+
+
+function closeBulkControl() {
+
+    bulkControlClearProgressTimer();
+
+
+    document.getElementById(
+        "bulkControlBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function bulkControlBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        ===
+        "bulkControlBackdrop"
+    ) {
+
+        closeBulkControl();
+    }
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            document.getElementById(
+                "bulkControlBackdrop"
+            )
+            ?.classList.contains(
+                "open"
+            )
+        ) {
+
+            closeBulkControl();
+        }
+    }
+);
+
 
 
 async function minerAction(

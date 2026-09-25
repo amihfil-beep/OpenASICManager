@@ -206,6 +206,7 @@ app.include_router(
     create_control_router(
         queue_control,
         queue_reboot,
+        log_event,
     )
 )
 app.include_router(

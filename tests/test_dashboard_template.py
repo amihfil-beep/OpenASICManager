@@ -31,6 +31,49 @@ class DashboardTemplateTests(unittest.TestCase):
             dashboard_html(),
         )
 
+    def test_dashboard_contains_safe_bulk_control_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "BULK CONTROL",
+            "Safe Bulk ASIC Control",
+            "bulkControlBackdrop",
+            "bulkControlSource",
+            "bulkControlGroup",
+            "bulkControlAction",
+            "bulkControlRows",
+            "bulkControlPreviewButton",
+            "bulkControlSubmitButton",
+            "bulkControlRefreshButton",
+            "bulk-miner-checkbox",
+            "bulkControlSelectAllVisible",
+            "bulkControlMinerSelectionChanged",
+            "bulkControlSelectionPayload",
+            "bulkControlFingerprint",
+            "previewBulkControl",
+            "submitBulkControl",
+            "refreshBulkControlProgress",
+            "/api/control/bulk/preview/",
+            "/api/control/bulk/",
+            "/api/control/jobs?limit=500",
+            "Preview is mandatory before submission",
+            "Maximum batch size: 50 ASICs",
+            "Type exactly:",
+            "confirm_reboot",
+            "VERIFIED",
+            "FAILED",
+            "verified control job",
+            "openBulkControl",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
     def test_dashboard_contains_anomaly_policy_editor(self):
         content = dashboard_html()
 

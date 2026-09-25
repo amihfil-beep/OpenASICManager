@@ -16,6 +16,7 @@ from scheduler.policy import (
     schedule_time_string,
     schedule_days_string,
     schedule_rule_dict,
+    schedule_rule_next_run,
 )
 from scheduler.repository import (
     schedule_state_details,
@@ -27,6 +28,7 @@ from scheduler.repository import (
     update_schedule_rule,
     set_schedule_rule_enabled,
     delete_schedule_rule,
+    list_schedulable_miners,
 )
 from scheduler.validation import (
     schedule_normalize_input,
@@ -83,6 +85,47 @@ def _schedule_scope_label(
             else ""
         )
     )
+
+
+def _schedule_preview_targets(
+    normalized,
+):
+
+    miners = (
+        list_schedulable_miners()
+    )
+
+
+    if (
+        normalized["scope"]
+        ==
+        "FARM"
+    ):
+        return miners
+
+
+    group_id = int(
+        normalized[
+            "group_id"
+        ]
+    )
+
+
+    return [
+        miner
+        for miner
+        in miners
+        if (
+            miner["group_id"]
+            is not None
+            and
+            int(
+                miner["group_id"]
+            )
+            ==
+            group_id
+        )
+    ]
 
 
 def create_scheduler_router(log_event):
@@ -169,6 +212,298 @@ def create_scheduler_router(log_event):
                 for rule
                 in rules
             ],
+        }
+
+
+    @router.post(
+        "/api/schedule/preview"
+    )
+    async def api_schedule_preview(
+        request: Request,
+    ):
+
+        ensure_schedule_rules_schema()
+
+
+        try:
+            data = await request.json()
+
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid JSON body",
+            )
+
+
+        raw_rule_id = data.get(
+            "rule_id"
+        )
+
+
+        current = None
+        exclude_id = None
+
+
+        if raw_rule_id not in (
+            None,
+            "",
+        ):
+
+            try:
+                exclude_id = int(
+                    raw_rule_id
+                )
+
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid rule_id",
+                )
+
+
+            if exclude_id <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid rule_id",
+                )
+
+
+            current = get_schedule_rule(
+                exclude_id
+            )
+
+
+            if current is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        "Schedule rule "
+                        "not found"
+                    ),
+                )
+
+
+        normalized = (
+            schedule_normalize_input(
+                data,
+                current=current,
+            )
+        )
+
+
+        group = (
+            _validated_schedule_group(
+                normalized
+            )
+        )
+
+
+        conflict = (
+            schedule_conflicting_rule(
+                normalized,
+                exclude_id=exclude_id,
+            )
+        )
+
+
+        now = datetime.now(
+            MOSCOW
+        )
+
+
+        targets = (
+            _schedule_preview_targets(
+                normalized
+            )
+        )
+
+
+        next_run = (
+            schedule_rule_next_run(
+                normalized,
+                now,
+            )
+        )
+
+
+        conflict_data = None
+
+
+        if conflict is not None:
+
+            conflict_data = {
+                "id":
+                    int(
+                        conflict["id"]
+                    ),
+
+                "action":
+                    str(
+                        conflict[
+                            "action"
+                        ]
+                    ),
+
+                "time":
+                    schedule_time_string(
+                        conflict[
+                            "time_minutes"
+                        ]
+                    ),
+
+                "days":
+                    schedule_days_string(
+                        conflict[
+                            "days_mask"
+                        ]
+                    ),
+
+                "scope":
+                    str(
+                        conflict[
+                            "scope"
+                        ]
+                    ),
+
+                "group_id":
+                    (
+                        int(
+                            conflict[
+                                "group_id"
+                            ]
+                        )
+                        if (
+                            conflict[
+                                "group_id"
+                            ]
+                            is not None
+                        )
+                        else None
+                    ),
+            }
+
+
+        return {
+            "allowed":
+                conflict is None,
+
+            "scope":
+                normalized[
+                    "scope"
+                ],
+
+            "target":
+                (
+                    "Entire farm"
+                    if (
+                        normalized[
+                            "scope"
+                        ]
+                        ==
+                        "FARM"
+                    )
+                    else str(
+                        group["name"]
+                    )
+                ),
+
+            "group_id":
+                normalized.get(
+                    "group_id"
+                ),
+
+            "group_name":
+                (
+                    str(
+                        group["name"]
+                    )
+                    if group is not None
+                    else None
+                ),
+
+            "dynamic_membership":
+                (
+                    normalized[
+                        "scope"
+                    ]
+                    ==
+                    "GROUP"
+                ),
+
+            "action":
+                normalized[
+                    "action"
+                ],
+
+            "days_mask":
+                normalized[
+                    "days_mask"
+                ],
+
+            "days":
+                schedule_days_string(
+                    normalized[
+                        "days_mask"
+                    ]
+                ),
+
+            "time_minutes":
+                normalized[
+                    "time_minutes"
+                ],
+
+            "time":
+                schedule_time_string(
+                    normalized[
+                        "time_minutes"
+                    ]
+                ),
+
+            "enabled":
+                normalized[
+                    "enabled"
+                ],
+
+            "affected_miner_count":
+                len(
+                    targets
+                ),
+
+            "group_member_count":
+                (
+                    int(
+                        group[
+                            "member_count"
+                        ]
+                    )
+                    if group is not None
+                    else None
+                ),
+
+            "next_run":
+                (
+                    next_run.isoformat()
+                    if next_run
+                    else None
+                ),
+
+            "next_run_label":
+                (
+                    (
+                        next_run.strftime(
+                            "%a %d.%m %H:%M"
+                        )
+                        +
+                        " "
+                        +
+                        TIMEZONE_NAME
+                    )
+                    if next_run
+                    else None
+                ),
+
+            "conflict":
+                conflict_data,
         }
 
 

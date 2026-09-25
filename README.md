@@ -31,9 +31,9 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 
 ## Current release
 
-**0.6.0**
+**0.7.0**
 
-OpenASICManager 0.6.0 is a fleet-groups and bulk-operations release. It adds persistent operational groups, deterministic GLOBAL -> GROUP -> MINER anomaly-policy inheritance, snapshot-based group maintenance, group-aware fleet views and safe bounded bulk PAUSE / RESUME / REBOOT while preserving the existing verified per-miner control pipeline.
+OpenASICManager 0.7.0 is a group-aware scheduler release. It adds explicit FARM and GROUP scheduler scopes, deterministic effective schedules per ASIC, current-membership GROUP scheduling, server-derived preview before saving or enabling scoped rules, and per-miner effective scheduler visibility while preserving the existing verified per-miner control pipeline.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 
@@ -79,11 +79,17 @@ The scheduler supports editable rules with:
 - PAUSE or RESUME action;
 - arbitrary time;
 - selectable weekdays;
+- FARM or GROUP scope;
+- operational-group targeting;
 - rule enable/disable;
 - comments;
 - per-ASIC Schedule ON/OFF.
 
-Manual control temporarily overrides scheduling until the next scheduled transition.
+FARM rules apply to schedulable ASICs across the fleet. GROUP rules apply to the current members of the selected operational group and take precedence over FARM rules for those miners.
+
+Before a scoped rule is saved or enabled, the dashboard requests a server-derived preview showing the proposed scope, action, schedule, current affected ASIC count, next run and any conflicting rule. Preview itself does not queue ASIC control jobs.
+
+The dashboard also exposes each ASIC's effective scheduler source and next applicable transition. Manual control temporarily overrides scheduling until the next transition applicable to that individual ASIC.
 
 ### Monitoring
 

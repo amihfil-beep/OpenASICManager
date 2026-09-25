@@ -525,8 +525,15 @@ class NotificationPolicySemanticIntegrationTests(
                     audit_runtime.log_event
                 ),
                 stop_event=None,
-                desired_state=(
-                    lambda when: None
+                effective_schedule_states=(
+                    lambda miners, when: {
+                        int(miner["id"]): {
+                            "desired_state":
+                                None,
+                        }
+                        for miner
+                        in miners
+                    }
                 ),
             )
         )

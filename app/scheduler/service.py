@@ -19,9 +19,9 @@ from scheduler.policy import (
 )
 
 from scheduler.repository import (
+    effective_schedule_states,
     list_schedulable_miners,
     mark_schedule_rule_seen,
-    schedule_state_details,
 )
 
 
@@ -61,6 +61,7 @@ class SchedulerRuntime:
 __all__ = (
     "SchedulerRuntime",
     "schedule_mark_rule_seen",
+    "scheduler_iteration",
     "scheduler_loop",
 )
 
@@ -113,131 +114,197 @@ def schedule_mark_rule_seen(
         )
 
 
-def scheduler_loop(runtime):
-    while not runtime.stop_event.is_set():
+def scheduler_iteration(
+    runtime,
+    now=None,
+):
 
-        scheduler_enabled = (
-            get_setting(
-                "scheduler_enabled",
-                "0",
-            )
-            == "1"
+    scheduler_enabled = (
+        get_setting(
+            "scheduler_enabled",
+            "0",
+        )
+        == "1"
+    )
+
+
+    if not scheduler_enabled:
+        return
+
+
+    if now is None:
+
+        now = datetime.now(
+            MOSCOW
         )
 
-        if scheduler_enabled:
 
-            now = datetime.now(
-                MOSCOW
+    now_epoch = int(
+        now.timestamp()
+    )
+
+
+    miners = (
+        list_schedulable_miners()
+    )
+
+
+    schedules = (
+        effective_schedule_states(
+            miners,
+            now,
+        )
+    )
+
+
+    for miner in miners:
+
+        details = schedules.get(
+            int(
+                miner["id"]
+            ),
+            {},
+        )
+
+
+        target = details.get(
+            "desired_state"
+        )
+
+
+        active_rule = details.get(
+            "rule"
+        )
+
+        active_occurrence = (
+            details.get(
+                "occurrence"
             )
+        )
 
-            now_epoch = int(
-                now.timestamp()
-            )
 
-            (
-                target,
+        if active_rule is not None:
+
+            schedule_mark_rule_seen(
+                runtime,
                 active_rule,
                 active_occurrence,
-            ) = schedule_state_details(
-                now
             )
 
 
-            if active_rule is not None:
+        if target is None:
+            continue
 
-                schedule_mark_rule_seen(runtime,
-                    active_rule,
-                    active_occurrence,
+
+        override_until = (
+            miner[
+                "manual_override_until"
+            ]
+            or 0
+        )
+
+
+        if (
+            override_until
+            >
+            now_epoch
+        ):
+            continue
+
+
+        state = (
+            miner[
+                "last_state"
+            ]
+            or "UNKNOWN"
+        )
+
+
+        last_seen = (
+            miner[
+                "last_seen"
+            ]
+            or 0
+        )
+
+
+        last_action_at = (
+            miner[
+                "last_action_at"
+            ]
+            or 0
+        )
+
+
+        if (
+            now_epoch
+            -
+            last_seen
+            >
+            60
+        ):
+            continue
+
+
+        if (
+            now_epoch
+            -
+            last_action_at
+            <
+            CONTROL_COOLDOWN
+        ):
+            continue
+
+
+        action = None
+
+
+        if target == "MINING":
+
+            if state in (
+                "PAUSED",
+                "IDLE",
+            ):
+
+                action = (
+                    "resume"
                 )
 
-            miners = list_schedulable_miners()
 
-            for miner in miners:
+        elif target == "PAUSED":
 
-                override_until = (
-                    miner[
-                        "manual_override_until"
-                    ]
-                    or 0
+            if state in (
+                "MINING",
+                "STARTING",
+                "IDLE",
+            ):
+
+                action = (
+                    "pause"
                 )
 
-                if (
-                    override_until
-                    > now_epoch
-                ):
-                    continue
 
-                state = (
-                    miner[
-                        "last_state"
-                    ]
-                    or "UNKNOWN"
+        if action:
+
+            try:
+
+                runtime.queue_control(
+                    miner["id"],
+                    action,
+                    manual=False,
                 )
 
-                last_seen = (
-                    miner[
-                        "last_seen"
-                    ]
-                    or 0
-                )
+            except Exception:
+                pass
 
-                last_action_at = (
-                    miner[
-                        "last_action_at"
-                    ]
-                    or 0
-                )
 
-                if (
-                    now_epoch
-                    - last_seen
-                    > 60
-                ):
-                    continue
+def scheduler_loop(runtime):
 
-                if (
-                    now_epoch
-                    - last_action_at
-                    < CONTROL_COOLDOWN
-                ):
-                    continue
+    while not runtime.stop_event.is_set():
 
-                action = None
-
-                if target == "MINING":
-
-                    if state in (
-                        "PAUSED",
-                        "IDLE",
-                    ):
-
-                        action = (
-                            "resume"
-                        )
-
-                elif target == "PAUSED":
-
-                    if state in (
-                        "MINING",
-                        "STARTING",
-                        "IDLE",
-                    ):
-
-                        action = (
-                            "pause"
-                        )
-
-                if action:
-
-                    try:
-                        runtime.queue_control(
-                            miner["id"],
-                            action,
-                            manual=False,
-                        )
-
-                    except Exception:
-                        pass
+        scheduler_iteration(
+            runtime
+        )
 
         runtime.stop_event.wait(
             SCHEDULER_INTERVAL

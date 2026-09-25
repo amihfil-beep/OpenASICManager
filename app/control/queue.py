@@ -255,10 +255,23 @@ def queue_control(
         now = int(time.time())
 
         if manual:
-            override_until = int(
-                runtime.next_transition()
-                .timestamp()
+
+            transition = (
+                runtime.next_transition(
+                    miner_id
+                )
             )
+
+
+            override_until = (
+                int(
+                    transition.timestamp()
+                )
+                if transition is not None
+                else 0
+            )
+
+
             set_manual_override(
                 miner_id,
                 override_until,

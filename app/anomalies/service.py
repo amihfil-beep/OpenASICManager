@@ -31,11 +31,13 @@ class AnomalyRuntime:
         self,
         log_event,
         stop_event,
-        desired_state,
+        effective_schedule_states,
     ):
         self.log_event = log_event
         self.stop_event = stop_event
-        self.desired_state = desired_state
+        self.effective_schedule_states = (
+            effective_schedule_states
+        )
 
     def run(self):
         return anomaly_loop(self)
@@ -85,9 +87,18 @@ def set_anomaly_condition(
         )
 
 
-def anomaly_desired_state(runtime):
-    return runtime.desired_state(
-        datetime.now(MOSCOW)
+def anomaly_schedule_states(
+    runtime,
+    miners,
+):
+
+    return (
+        runtime.effective_schedule_states(
+            miners,
+            datetime.now(
+                MOSCOW
+            ),
+        )
     )
 
 
@@ -125,11 +136,30 @@ def anomaly_scan(
         )
     )
 
-    desired = anomaly_desired_state(
-        runtime
+    schedule_states = (
+        anomaly_schedule_states(
+            runtime,
+            miners,
+        )
     )
 
     for miner in miners:
+
+        schedule_details = (
+            schedule_states.get(
+                int(
+                    miner["id"]
+                ),
+                {},
+            )
+        )
+
+        desired = (
+            schedule_details.get(
+                "desired_state"
+            )
+        )
+
         group_overrides = (
             group_override_snapshot.get(
                 int(miner["group_id"]),
@@ -331,7 +361,7 @@ def anomaly_loop(runtime):
 __all__ = (
     "AnomalyRuntime",
     "set_anomaly_condition",
-    "anomaly_desired_state",
+    "anomaly_schedule_states",
     "anomaly_scan",
     "anomaly_loop",
 )

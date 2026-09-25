@@ -37,7 +37,10 @@ from control.worker import ControlRuntime
 from db import init_db
 from monitoring.service import MonitoringRuntime
 from notifications.telegram import TelegramRuntime, telegram_event_async
-from scheduler.repository import desired_state, next_transition
+from scheduler.repository import (
+    effective_schedule_states,
+    next_transition_for_miner,
+)
 from scheduler.service import SchedulerRuntime
 from telemetry.service import TelemetryRuntime
 from ui.dashboard import dashboard_html
@@ -81,7 +84,7 @@ control_runtime = ControlRuntime(
 queue_runtime = QueueRuntime(
     audit_source=audit_source,
     log_event=log_event,
-    next_transition=next_transition,
+    next_transition=next_transition_for_miner,
     control_runtime=control_runtime,
 )
 queue_control = queue_runtime.queue_control
@@ -97,7 +100,9 @@ scheduler_loop = scheduler_runtime.run
 anomaly_runtime = AnomalyRuntime(
     log_event=log_event,
     stop_event=stop_event,
-    desired_state=desired_state,
+    effective_schedule_states=(
+        effective_schedule_states
+    ),
 )
 anomaly_loop = anomaly_runtime.run
 

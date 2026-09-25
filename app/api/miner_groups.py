@@ -25,6 +25,9 @@ from miner_groups.service import (
     normalize_group_name,
     normalized_group_key,
 )
+from scheduler.repository import (
+    count_group_schedule_rules,
+)
 
 
 def _group_dict(row):
@@ -260,6 +263,26 @@ def create_miner_group_router(
                 status_code=400,
                 detail=str(exc),
             )
+
+
+        schedule_rule_count = (
+            count_group_schedule_rules(
+                group_id
+            )
+        )
+
+        if schedule_rule_count:
+
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Delete the "
+                    f"{schedule_rule_count} "
+                    "scheduler rule(s) for "
+                    "this group first"
+                ),
+            )
+
 
         deleted = delete_group(
             group_id

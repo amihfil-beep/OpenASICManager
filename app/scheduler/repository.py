@@ -37,6 +37,7 @@ __all__ = (
     "delete_schedule_rule",
     "mark_schedule_rule_seen",
     "list_schedulable_miners",
+    "count_group_schedule_rules",
 )
 
 
@@ -61,7 +62,9 @@ def schedule_state_details(
 
         FROM schedule_rules
 
-        WHERE enabled=1
+        WHERE
+            enabled=1
+            AND scope='FARM'
     """).fetchall()
 
     conn.close()
@@ -234,7 +237,19 @@ def schedule_conflicting_rule(
             AND (
                 days_mask & ?
             ) != 0
+            AND scope=?
+            AND (
+                (
+                    ? IS NULL
+                    AND group_id IS NULL
+                )
+                OR group_id=?
+            )
     """
+
+    group_id = normalized.get(
+        "group_id"
+    )
 
     params = [
         normalized[
@@ -243,6 +258,11 @@ def schedule_conflicting_rule(
         normalized[
             "days_mask"
         ],
+        normalized[
+            "scope"
+        ],
+        group_id,
+        group_id,
     ]
 
 
@@ -299,7 +319,9 @@ def next_transition(
 
         FROM schedule_rules
 
-        WHERE enabled=1
+        WHERE
+            enabled=1
+            AND scope='FARM'
     """).fetchall()
 
     conn.close()
@@ -334,16 +356,47 @@ def next_transition(
         candidates
     )
 
+def _schedule_rule_read_query(
+    where_sql="",
+):
+
+    return f"""
+        SELECT
+            r.*,
+
+            g.name
+                AS group_name,
+
+            CASE
+                WHEN r.scope='GROUP'
+                THEN (
+                    SELECT COUNT(*)
+                    FROM miners m
+                    WHERE m.group_id=r.group_id
+                )
+                ELSE NULL
+            END
+                AS group_member_count
+
+        FROM schedule_rules r
+
+        LEFT JOIN miner_groups g
+            ON g.id=r.group_id
+
+        {where_sql}
+    """
+
+
 def list_schedule_rules():
     ensure_schedule_rules_schema()
 
     conn = db()
     try:
-        return conn.execute("""
-            SELECT *
-            FROM schedule_rules
-            ORDER BY time_minutes, id
-        """).fetchall()
+        return conn.execute(
+            _schedule_rule_read_query(
+                "ORDER BY r.time_minutes, r.id"
+            )
+        ).fetchall()
     finally:
         conn.close()
 
@@ -353,13 +406,14 @@ def get_schedule_rule(rule_id):
 
     conn = db()
     try:
-        return conn.execute("""
-            SELECT *
-            FROM schedule_rules
-            WHERE id=?
-        """, (
-            int(rule_id),
-        )).fetchone()
+        return conn.execute(
+            _schedule_rule_read_query(
+                "WHERE r.id=?"
+            ),
+            (
+                int(rule_id),
+            ),
+        ).fetchone()
     finally:
         conn.close()
 
@@ -380,18 +434,22 @@ def create_schedule_rule(
                 time_minutes,
                 days_mask,
                 scope,
+                group_id,
                 comment,
                 effective_from,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             1 if normalized["enabled"] else 0,
             normalized["action"],
             normalized["time_minutes"],
             normalized["days_mask"],
             normalized["scope"],
+            normalized.get(
+                "group_id"
+            ),
             normalized["comment"],
             int(now_epoch),
             int(now_epoch),
@@ -430,6 +488,7 @@ def update_schedule_rule(
                 time_minutes=?,
                 days_mask=?,
                 scope=?,
+                group_id=?,
                 comment=?,
                 effective_from=?,
                 last_run_key=NULL,
@@ -441,6 +500,9 @@ def update_schedule_rule(
             normalized["time_minutes"],
             normalized["days_mask"],
             normalized["scope"],
+            normalized.get(
+                "group_id"
+            ),
             normalized["comment"],
             int(effective_from),
             int(now_epoch),
@@ -557,6 +619,56 @@ def mark_schedule_rule_seen(
 
         conn.commit()
         return changed
+    finally:
+        conn.close()
+
+
+def count_group_schedule_rules(
+    group_id,
+):
+
+    conn = db()
+
+    try:
+
+        table = conn.execute("""
+            SELECT 1
+
+            FROM sqlite_master
+
+            WHERE
+                type='table'
+                AND name='schedule_rules'
+
+            LIMIT 1
+        """).fetchone()
+
+
+        # Scheduler schema is created lazily.
+        #
+        # If this database has never initialized it,
+        # there cannot be any GROUP schedule rules
+        # blocking miner-group deletion.
+        if table is None:
+            return 0
+
+
+        return int(
+            conn.execute("""
+                SELECT COUNT(*) AS count
+
+                FROM schedule_rules
+
+                WHERE
+                    scope='GROUP'
+                    AND group_id=?
+            """, (
+                int(group_id),
+            )).fetchone()[
+                "count"
+            ]
+        )
+
     finally:
         conn.close()
 

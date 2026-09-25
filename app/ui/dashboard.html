@@ -3007,7 +3007,7 @@ a:hover {
     <div class="schedule-summary-item">
 
         <div class="muted small">
-            Current target
+            Current FARM target
         </div>
 
         <strong id="desiredState">
@@ -3020,7 +3020,7 @@ a:hover {
     <div class="schedule-summary-item">
 
         <div class="muted small">
-            Next event
+            Next FARM event
         </div>
 
         <strong id="nextTransition">
@@ -3046,7 +3046,7 @@ a:hover {
     <div class="schedule-summary-item">
 
         <div class="muted small">
-            Active rule
+            Active FARM rule
         </div>
 
         <strong id="scheduleRulesActiveRule">
@@ -3071,7 +3071,7 @@ a:hover {
 
 <table
     class="schedule-rules-table"
-    style="min-width:920px"
+    style="min-width:1080px"
 >
 
 <thead>
@@ -3079,6 +3079,7 @@ a:hover {
 <tr>
     <th>Status</th>
     <th>Action</th>
+    <th>Scope</th>
     <th>Days</th>
     <th>Time</th>
     <th>Next run</th>
@@ -3093,7 +3094,7 @@ a:hover {
 
 <tr>
     <td
-        colspan="7"
+        colspan="8"
         class="muted"
     >
         Loading...
@@ -3241,6 +3242,52 @@ a:hover {
 
         <div class="schedule-rule-field">
 
+            <label for="scheduleRuleScope">
+                Scope
+            </label>
+
+            <select
+                id="scheduleRuleScope"
+                onchange="scheduleRuleScopeChanged()"
+            >
+
+                <option value="FARM">
+                    FARM
+                </option>
+
+                <option value="GROUP">
+                    GROUP
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <div
+            id="scheduleRuleGroupWrap"
+            class="schedule-rule-field"
+            style="display:none"
+        >
+
+            <label for="scheduleRuleGroup">
+                Operational group
+            </label>
+
+            <select
+                id="scheduleRuleGroup"
+                onchange="scheduleRuleScopeChanged()"
+            >
+                <option value="">
+                    Select group...
+                </option>
+            </select>
+
+        </div>
+
+
+        <div class="schedule-rule-field">
+
             <label for="scheduleRuleTime">
                 Time
             </label>
@@ -3328,6 +3375,15 @@ a:hover {
 
             </div>
 
+        </div>
+
+
+        <div
+            id="scheduleRuleScopeInfo"
+            class="schedule-rule-field full muted small"
+        >
+            FARM applies to all enabled ASICs
+            with Schedule = ON.
         </div>
 
 
@@ -13250,6 +13306,8 @@ async function loadMinerGroups() {
 
         bulkControlPopulateGroups();
 
+        scheduleRulePopulateGroups();
+
         renderOperationalGroupFilters();
 
 
@@ -19070,17 +19128,51 @@ function renderScheduleRules(
 
     if (status) {
 
+        const farmCount =
+            rules.filter(
+                rule =>
+                    rule.scope
+                    !==
+                    "GROUP"
+            ).length;
+
+
+        const groupCount =
+            rules.filter(
+                rule =>
+                    rule.scope
+                    ===
+                    "GROUP"
+            ).length;
+
+
         status.textContent =
             (
                 rules.length
                 +
                 (
                     rules.length === 1
-                    ? " rule"
-                    : " rules"
+                    ? " rule configured"
+                    : " rules configured"
                 )
                 +
-                " configured"
+                " · "
+                +
+                farmCount
+                +
+                " FARM"
+                +
+                " · "
+                +
+                groupCount
+                +
+                " GROUP"
+                +
+                (
+                    groupCount
+                    ? " (GROUP execution pending scoped scheduler)"
+                    : ""
+                )
             );
     }
 
@@ -19095,7 +19187,7 @@ function renderScheduleRules(
         body.innerHTML = `
             <tr>
                 <td
-                    colspan="7"
+                    colspan="8"
                     class="muted"
                 >
                     No schedule rules configured.
@@ -19152,6 +19244,51 @@ function renderScheduleRules(
                             >
                                 ${scheduleHtml(rule.action)}
                             </span>
+                        </td>
+
+
+                        <td>
+
+                            <strong>
+                                ${scheduleHtml(
+                                    rule.scope
+                                    ||
+                                    "FARM"
+                                )}
+                            </strong>
+
+                            ${
+                                rule.scope
+                                ===
+                                "GROUP"
+                                ? `
+                                    <div class="muted small">
+                                        ${
+                                            scheduleHtml(
+                                                rule.group_name
+                                                ||
+                                                (
+                                                    "Group #"
+                                                    +
+                                                    rule.group_id
+                                                )
+                                            )
+                                        }
+                                        ·
+                                        ${
+                                            Number(
+                                                rule.group_member_count
+                                                ||
+                                                0
+                                            )
+                                        }
+                                        current
+                                        · configuration only
+                                    </div>
+                                `
+                                : ""
+                            }
+
                         </td>
 
 
@@ -19379,6 +19516,212 @@ function scheduleRuleShowError(
 }
 
 
+function scheduleRulePopulateGroups() {
+
+    const select =
+        document.getElementById(
+            "scheduleRuleGroup"
+        );
+
+
+    if (!select) {
+        return;
+    }
+
+
+    const current =
+        String(
+            select.value
+            ||
+            ""
+        );
+
+
+    const groups =
+        minerGroupList();
+
+
+    select.innerHTML =
+        `
+            <option value="">
+                Select group...
+            </option>
+        `
+        +
+        groups.map(
+            group => `
+                <option value="${Number(group.id)}">
+                    ${scheduleHtml(group.name)}
+                    (${Number(group.member_count || 0)})
+                </option>
+            `
+        ).join("");
+
+
+    if (
+        current
+        &&
+        groups.some(
+            group =>
+                Number(group.id)
+                ===
+                Number(current)
+        )
+    ) {
+        select.value =
+            current;
+    }
+
+
+    scheduleRuleScopeChanged();
+}
+
+
+function scheduleRuleScopeChanged() {
+
+    const scopeElement =
+        document.getElementById(
+            "scheduleRuleScope"
+        );
+
+    const groupWrap =
+        document.getElementById(
+            "scheduleRuleGroupWrap"
+        );
+
+    const groupElement =
+        document.getElementById(
+            "scheduleRuleGroup"
+        );
+
+    const info =
+        document.getElementById(
+            "scheduleRuleScopeInfo"
+        );
+
+
+    if (
+        !scopeElement
+        ||
+        !groupWrap
+        ||
+        !groupElement
+    ) {
+        return;
+    }
+
+
+    const scope =
+        String(
+            scopeElement.value
+            ||
+            "FARM"
+        ).toUpperCase();
+
+
+    const isGroup =
+        (
+            scope
+            ===
+            "GROUP"
+        );
+
+
+    groupWrap.style.display =
+        isGroup
+        ? ""
+        : "none";
+
+
+    groupElement.disabled =
+        !isGroup;
+
+
+    if (!info) {
+        return;
+    }
+
+
+    if (!isGroup) {
+
+        info.textContent =
+            (
+                "FARM applies to all enabled ASICs "
+                +
+                "with Schedule = ON."
+            );
+
+        return;
+    }
+
+
+    const groupId =
+        Number(
+            groupElement.value
+        );
+
+
+    const group =
+        minerGroupList().find(
+            item =>
+                Number(item.id)
+                ===
+                groupId
+        );
+
+
+    if (!group) {
+
+        info.textContent =
+            (
+                "Select an operational group. "
+                +
+                "GROUP membership is dynamic. "
+                +
+                "GROUP rule execution is not active "
+                +
+                "until per-miner scoped scheduling "
+                +
+                "is enabled."
+            );
+
+        return;
+    }
+
+
+    const memberCount =
+        Number(
+            group.member_count
+            ||
+            0
+        );
+
+
+    info.textContent =
+        (
+            group.name
+            +
+            ": "
+            +
+            memberCount
+            +
+            (
+                memberCount === 1
+                ? " current ASIC. "
+                : " current ASICs. "
+            )
+            +
+            "Membership is dynamic. "
+            +
+            "This GROUP rule is configuration-only "
+            +
+            "until per-miner scoped scheduling "
+            +
+            "is enabled."
+        );
+}
+
+
 function openScheduleRuleEditor(
     ruleId = null
 ) {
@@ -19421,6 +19764,21 @@ function openScheduleRuleEditor(
         );
 
 
+    const scope =
+        document.getElementById(
+            "scheduleRuleScope"
+        );
+
+
+    const group =
+        document.getElementById(
+            "scheduleRuleGroup"
+        );
+
+
+    scheduleRulePopulateGroups();
+
+
     const comment =
         document.getElementById(
             "scheduleRuleComment"
@@ -19445,6 +19803,24 @@ function openScheduleRuleEditor(
 
         time.value =
             rule.time;
+
+        scope.value =
+            rule.scope
+            ||
+            "FARM";
+
+        group.value =
+            (
+                rule.group_id
+                === null
+                ||
+                rule.group_id
+                === undefined
+            )
+            ? ""
+            : String(
+                rule.group_id
+            );
 
         comment.value =
             rule.comment
@@ -19472,6 +19848,12 @@ function openScheduleRuleEditor(
         time.value =
             "13:00";
 
+        scope.value =
+            "FARM";
+
+        group.value =
+            "";
+
         comment.value =
             "";
 
@@ -19483,6 +19865,9 @@ function openScheduleRuleEditor(
             31
         );
     }
+
+
+    scheduleRuleScopeChanged();
 
 
     scheduleRuleShowError(
@@ -19574,6 +19959,47 @@ async function saveScheduleRule() {
     }
 
 
+    const scope =
+        String(
+            document.getElementById(
+                "scheduleRuleScope"
+            ).value
+            ||
+            "FARM"
+        ).toUpperCase();
+
+
+    let groupId =
+        null;
+
+
+    if (scope === "GROUP") {
+
+        groupId =
+            Number(
+                document.getElementById(
+                    "scheduleRuleGroup"
+                ).value
+            );
+
+
+        if (
+            !Number.isInteger(
+                groupId
+            )
+            ||
+            groupId <= 0
+        ) {
+
+            scheduleRuleShowError(
+                "Select an operational group."
+            );
+
+            return;
+        }
+    }
+
+
     const payload = {
 
         action:
@@ -19586,6 +20012,12 @@ async function saveScheduleRule() {
 
         days_mask:
             daysMask,
+
+        scope:
+            scope,
+
+        group_id:
+            groupId,
 
         comment:
             document.getElementById(
@@ -19717,6 +20149,28 @@ async function toggleScheduleRule(
             " "
             +
             rule.days
+            +
+            "\nScope: "
+            +
+            (
+                rule.scope
+                ===
+                "GROUP"
+                ? (
+                    "GROUP · "
+                    +
+                    (
+                        rule.group_name
+                        ||
+                        (
+                            "Group #"
+                            +
+                            rule.group_id
+                        )
+                    )
+                )
+                : "FARM"
+            )
         )
     ) {
 

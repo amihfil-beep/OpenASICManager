@@ -270,6 +270,43 @@ def schedule_rule_dict(
                 rule["scope"]
             ),
 
+        "group_id":
+            (
+                int(
+                    rule["group_id"]
+                )
+                if rule["group_id"]
+                is not None
+                else None
+            ),
+
+        "group_name":
+            (
+                rule["group_name"]
+                if "group_name"
+                in rule.keys()
+                else None
+            ),
+
+        "group_member_count":
+            (
+                int(
+                    rule[
+                        "group_member_count"
+                    ]
+                )
+                if (
+                    "group_member_count"
+                    in rule.keys()
+                    and
+                    rule[
+                        "group_member_count"
+                    ]
+                    is not None
+                )
+                else None
+            ),
+
         "comment":
             str(
                 rule["comment"]

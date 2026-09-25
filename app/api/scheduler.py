@@ -31,10 +31,58 @@ from scheduler.repository import (
 from scheduler.validation import (
     schedule_normalize_input,
 )
+from miner_groups.repository import (
+    get_group,
+)
 
 
 TIMEZONE_NAME = app_config.TIMEZONE
 MOSCOW = ZoneInfo(TIMEZONE_NAME)
+
+
+def _validated_schedule_group(
+    normalized,
+):
+
+    if normalized["scope"] != "GROUP":
+        return None
+
+    group = get_group(
+        normalized["group_id"]
+    )
+
+    if group is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Scheduler group not found",
+        )
+
+    return group
+
+
+def _schedule_scope_label(
+    normalized,
+    group=None,
+):
+
+    if normalized["scope"] == "FARM":
+        return "FARM"
+
+    return (
+        "GROUP #"
+        +
+        str(
+            normalized["group_id"]
+        )
+        +
+        (
+            " "
+            +
+            str(group["name"])
+            if group is not None
+            else ""
+        )
+    )
 
 
 def create_scheduler_router(log_event):
@@ -145,6 +193,10 @@ def create_scheduler_router(log_event):
             data
         )
 
+        group = _validated_schedule_group(
+            normalized
+        )
+
         conflict = schedule_conflicting_rule(
             normalized
         )
@@ -178,7 +230,8 @@ def create_scheduler_router(log_event):
                 f"Rule #{rule_id}: "
                 f"{normalized['action']} "
                 f"{schedule_time_string(normalized['time_minutes'])} "
-                f"{schedule_days_string(normalized['days_mask'])}"
+                f"{schedule_days_string(normalized['days_mask'])} "
+                f"{_schedule_scope_label(normalized, group)}"
                 +
                 (
                     f" - {normalized['comment']}"
@@ -229,6 +282,10 @@ def create_scheduler_router(log_event):
             current=current,
         )
 
+        group = _validated_schedule_group(
+            normalized
+        )
+
         conflict = schedule_conflicting_rule(
             normalized,
             exclude_id=rule_id,
@@ -249,6 +306,8 @@ def create_scheduler_router(log_event):
             str(current["action"]) != normalized["action"]
             or int(current["time_minutes"]) != normalized["time_minutes"]
             or int(current["days_mask"]) != normalized["days_mask"]
+            or str(current["scope"]) != normalized["scope"]
+            or current["group_id"] != normalized["group_id"]
             or (
                 not bool(current["enabled"])
                 and normalized["enabled"]
@@ -282,7 +341,8 @@ def create_scheduler_router(log_event):
                 f"Rule #{rule_id}: "
                 f"{normalized['action']} "
                 f"{schedule_time_string(normalized['time_minutes'])} "
-                f"{schedule_days_string(normalized['days_mask'])}"
+                f"{schedule_days_string(normalized['days_mask'])} "
+                f"{_schedule_scope_label(normalized, group)}"
             ),
         )
 
@@ -323,10 +383,16 @@ def create_scheduler_router(log_event):
             "time_minutes": current["time_minutes"],
             "days_mask": current["days_mask"],
             "scope": current["scope"],
+            "group_id": current["group_id"],
             "comment": current["comment"],
         }
 
         if new_enabled:
+
+            _validated_schedule_group(
+                normalized
+            )
+
             conflict = schedule_conflicting_rule(
                 normalized,
                 exclude_id=rule_id,

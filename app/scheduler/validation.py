@@ -250,6 +250,79 @@ def schedule_normalize_input(
         )
 
 
+    scope = str(
+        data.get(
+            "scope",
+            current_value(
+                "scope",
+                "FARM",
+            ),
+        )
+        or "FARM"
+    ).strip().upper()
+
+
+    if scope not in (
+        "FARM",
+        "GROUP",
+    ):
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Scope must be "
+                "FARM or GROUP"
+            ),
+        )
+
+
+    raw_group_id = data.get(
+        "group_id",
+        current_value(
+            "group_id",
+            None,
+        ),
+    )
+
+
+    if scope == "FARM":
+
+        if raw_group_id not in (
+            None,
+            "",
+        ):
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "FARM scope must not "
+                    "include group_id"
+                ),
+            )
+
+        group_id = None
+
+
+    else:
+
+        if (
+            type(raw_group_id) is not int
+            or raw_group_id <= 0
+        ):
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "GROUP scope requires "
+                    "a positive group_id"
+                ),
+            )
+
+        group_id = int(
+            raw_group_id
+        )
+
+
     return {
         "enabled":
             enabled,
@@ -264,7 +337,10 @@ def schedule_normalize_input(
             days_mask,
 
         "scope":
-            "SCHEDULED",
+            scope,
+
+        "group_id":
+            group_id,
 
         "comment":
             comment,

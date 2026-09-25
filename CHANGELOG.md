@@ -4,6 +4,48 @@ All notable changes to OpenASICManager will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-25
+
+Group-aware scheduler release focused on deterministic per-miner scheduling, explicit FARM and GROUP rule scopes, safe server-derived rule preview and clear effective scheduling visibility while preserving the existing verified per-miner control pipeline.
+
+### Added
+
+- Explicit FARM and GROUP scopes for scheduler rules.
+- Operational-group selection in the scheduler rule editor using the existing fleet-group model.
+- Current group-member counts and visible dynamic-membership semantics for GROUP scheduling.
+- Server-derived scheduler-rule preview before saving or enabling a rule.
+- Preview details for scope, target group, action, days/time, current affected schedulable ASIC count, next run and conflicting rules.
+- Effective per-miner scheduler context in the status/dashboard read model, including source scope, source group, effective rule/action and next applicable transition.
+- Dashboard visibility for FARM/GROUP scope in the scheduler rules table.
+- Regression coverage for scoped conflicts, effective per-miner schedules, preview semantics and dashboard integration.
+
+### Changed
+
+- Scheduler evaluation now resolves applicable rules per miner instead of relying on one farm-wide effective result.
+- GROUP rules take precedence over FARM rules for miners that currently belong to the targeted operational group.
+- Ungrouped miners continue to follow applicable FARM rules only.
+- GROUP scheduling follows current group membership dynamically; moving a miner into or out of a group changes future applicability without issuing an immediate ASIC command.
+- Manual scheduler overrides now expire at the next transition applicable to the individual miner rather than one global farm transition.
+- Conflict detection is scope-aware so unrelated GROUP rules may coexist while overlapping rules for the same effective scope are rejected.
+- The dashboard requires a current server-approved preview of the exact rule configuration before saving it.
+- Enabling an existing disabled rule now performs the same server-side preview and conflict validation first.
+- Per-miner scheduler visibility no longer fabricates one global next transition when effective schedules differ between miners or groups.
+
+### Safety and compatibility
+
+- Existing installations upgrade existing scheduler rules as FARM-scoped rules, preserving previous behavior by default.
+- Existing per-miner `schedule_enabled` remains authoritative.
+- The global scheduler ON/OFF setting remains the top-level scheduler kill switch.
+- Scheduler actions remain PAUSE and RESUME only; scheduled REBOOT is not introduced.
+- Preview is read-only and never queues ASIC control jobs.
+- Saving or enabling a rule does not bypass normal scheduler evaluation or the existing verified per-miner control queue.
+- Invalid or deleted GROUP references are rejected rather than silently broadened to FARM scope.
+- Group membership changes by themselves never issue PAUSE, RESUME or REBOOT commands.
+- One miner's control or verification failure does not rewrite another miner's scheduler result.
+- Maintenance, anomaly detection and notification policy remain separate from scheduler decision-making.
+- Public transactional upgrades remain supported from OpenASICManager 0.2.0 and newer public releases.
+- Historical private/legacy 1.5.2 deployments remain outside the generic public upgrade contract.
+
 ## [0.6.0] - 2026-09-25
 
 Fleet-groups and bulk-operations release focused on operating a real ASIC fleet as deterministic operational groups while preserving the existing per-miner verification, anomaly, maintenance and audit safety boundaries.

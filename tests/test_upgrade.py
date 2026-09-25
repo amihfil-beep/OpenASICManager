@@ -243,6 +243,11 @@ class UpgradeTests(unittest.TestCase):
             "1.0.0",
         )
 
+        validate_upgrade_path(
+            "0.5.0",
+            "0.6.0",
+        )
+
         with self.assertRaisesRegex(
             RuntimeError,
             "public upgrades start",

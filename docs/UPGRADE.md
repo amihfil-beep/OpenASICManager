@@ -115,6 +115,24 @@ sudo python3 scripts/openasicmanager-upgrade \
     --health-timeout 90
 ```
 
+## 0.6.0 upgrade notes
+
+Upgrading a supported public 0.5.0 installation to 0.6.0 uses the same transactional upgrade path described above.
+
+On first 0.6.0 application startup, normal SQLite schema initialization performs the 0.6.0 data-model migrations:
+
+- creates persistent miner-group storage and adds nullable group membership to existing miners;
+- existing miners remain ungrouped until an operator explicitly assigns them;
+- creates group-level anomaly-policy override storage;
+- expands planned maintenance from FARM / MINER scope to FARM / MINER / GROUP while preserving existing maintenance records;
+- creates immutable GROUP-maintenance membership snapshot storage.
+
+These migrations do not intentionally issue ASIC control commands or change scheduler rules.
+
+Because schema initialization occurs only after the upgrader has already created and verified its backup, a failed target startup or failed postflight follows the normal transactional rollback path, including restoration of the pre-upgrade database.
+
+No manual SQL migration is required for a standard supported public installation.
+
 ## Important operational notes
 
 - Do not run two upgrades concurrently.

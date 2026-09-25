@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import patch
 
@@ -32,6 +33,7 @@ class SchedulerRoutesTests(unittest.TestCase):
         }
         expected = {
             ("/api/schedule/rules", "GET"),
+            ("/api/schedule/preview", "POST"),
             ("/api/schedule/rules", "POST"),
             ("/api/schedule/rules/{rule_id}", "PUT"),
             ("/api/schedule/rules/{rule_id}/toggle", "POST"),
@@ -131,6 +133,178 @@ class SchedulerRoutesTests(unittest.TestCase):
                     normalized["group_id"],
                     expected_group_id,
                 )
+
+
+    def test_preview_reports_dynamic_group_targets_and_conflict(
+        self,
+    ):
+
+        endpoint = self.endpoint(
+            "/api/schedule/preview",
+            "POST",
+        )
+
+
+        class JsonRequest:
+
+            async def json(self):
+                return {
+                    "action":
+                        "PAUSE",
+
+                    "time":
+                        "21:30",
+
+                    "days_mask":
+                        127,
+
+                    "scope":
+                        "GROUP",
+
+                    "group_id":
+                        7,
+
+                    "enabled":
+                        True,
+
+                    "comment":
+                        "Night pause",
+                }
+
+
+        group = {
+            "id":
+                7,
+
+            "name":
+                "Rack A",
+
+            "member_count":
+                3,
+        }
+
+
+        miners = [
+            {
+                "id":
+                    1,
+
+                "group_id":
+                    7,
+            },
+            {
+                "id":
+                    2,
+
+                "group_id":
+                    7,
+            },
+            {
+                "id":
+                    3,
+
+                "group_id":
+                    8,
+            },
+        ]
+
+
+        conflict = {
+            "id":
+                91,
+
+            "action":
+                "RESUME",
+
+            "time_minutes":
+                21 * 60 + 30,
+
+            "days_mask":
+                31,
+
+            "scope":
+                "GROUP",
+
+            "group_id":
+                7,
+        }
+
+
+        with patch(
+            "api.scheduler.get_group",
+            return_value=group,
+        ), patch(
+            "api.scheduler.list_schedulable_miners",
+            return_value=miners,
+        ), patch(
+            "api.scheduler.schedule_conflicting_rule",
+            return_value=conflict,
+        ):
+
+            result = asyncio.run(
+                endpoint(
+                    JsonRequest()
+                )
+            )
+
+
+        self.assertEqual(
+            result[
+                "scope"
+            ],
+            "GROUP",
+        )
+
+        self.assertEqual(
+            result[
+                "target"
+            ],
+            "Rack A",
+        )
+
+        self.assertTrue(
+            result[
+                "dynamic_membership"
+            ]
+        )
+
+        self.assertEqual(
+            result[
+                "affected_miner_count"
+            ],
+            2,
+        )
+
+        self.assertEqual(
+            result[
+                "group_member_count"
+            ],
+            3,
+        )
+
+        self.assertFalse(
+            result[
+                "allowed"
+            ]
+        )
+
+        self.assertEqual(
+            result[
+                "conflict"
+            ][
+                "id"
+            ],
+            91,
+        )
+
+        self.assertEqual(
+            result[
+                "conflict"
+            ][
+                "time"
+            ],
+            "21:30",
+        )
 
 
     @patch("api.scheduler.set_setting")

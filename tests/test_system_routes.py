@@ -40,16 +40,48 @@ class SystemRoutesTests(unittest.TestCase):
     def test_status_delegates_to_existing_read_models(self):
         rows = [{"id": 1, "ip": "192.0.2.10"}]
         jobs = [{"miner_id": 1, "action": "pause"}]
-        miners = [{"id": 1, "state": "MINING"}]
+        miners = [{
+            "id": 1,
+            "state": "MINING",
+            "enabled": True,
+            "schedule_enabled": True,
+            "driver": "awesome",
+            "group_id": 7,
+        }]
         upcoming = datetime.fromisoformat(
             "2026-09-10T21:00:00+03:00"
         )
+
+        schedule_states = {
+            1: {
+                "desired_state":
+                    "PAUSED",
+
+                "source_scope":
+                    "GROUP",
+
+                "rule": {
+                    "id":
+                        17,
+
+                    "action":
+                        "PAUSE",
+                },
+
+                "next_transition":
+                    upcoming,
+            },
+        }
 
         with patch("api.system.list_miners", return_value=rows), \
              patch("api.system.list_active_control_jobs", return_value=jobs), \
              patch("api.system.get_setting", return_value="1"), \
              patch("api.system.next_transition", return_value=upcoming) as next_run, \
              patch("api.system.desired_state", return_value="MINING") as desired, \
+             patch(
+                 "api.system.effective_schedule_states",
+                 return_value=schedule_states,
+             ) as effective_states, \
              patch("api.system.miner_status_items", return_value=miners) as status_items:
 
             result = self.endpoint("/api/status")()
@@ -61,8 +93,59 @@ class SystemRoutesTests(unittest.TestCase):
             result["next_transition"],
             "2026-09-10T21:00:00+03:00",
         )
-        self.assertEqual(result["miners"], miners)
+        self.assertEqual(
+            result[
+                "miners"
+            ][
+                0
+            ][
+                "schedule_context"
+            ][
+                "source_scope"
+            ],
+            "GROUP",
+        )
+        self.assertEqual(
+            result[
+                "miners"
+            ][
+                0
+            ][
+                "schedule_context"
+            ][
+                "desired_state"
+            ],
+            "PAUSED",
+        )
+        self.assertEqual(
+            result[
+                "miners"
+            ][
+                0
+            ][
+                "schedule_context"
+            ][
+                "rule_id"
+            ],
+            17,
+        )
+        self.assertTrue(
+            result[
+                "miners"
+            ][
+                0
+            ][
+                "schedule_context"
+            ][
+                "applicable"
+            ]
+        )
         status_items.assert_called_once_with(rows, jobs)
+        effective_states.assert_called_once()
+        self.assertEqual(
+            effective_states.call_args.args[0],
+            rows,
+        )
         self.assertEqual(next_run.call_count, 1)
         self.assertEqual(desired.call_count, 1)
         self.assertIs(next_run.call_args.args[0], desired.call_args.args[0])

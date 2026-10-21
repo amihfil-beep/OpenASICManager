@@ -418,23 +418,23 @@ class RemoteWebSyncTests(unittest.TestCase):
         ])
 
         self.assertIn(
-            "m192-168-1-10.miners.example.com",
+            "m10.miners.example.com",
             first,
         )
         self.assertIn(
-            "m192-168-1-11.miners.example.com",
+            "m11.miners.example.com",
             added,
         )
         self.assertNotIn(
-            "m192-168-1-10.miners.example.com",
+            "m10.miners.example.com",
             removed,
         )
         self.assertNotIn(
-            "m192-168-1-11.miners.example.com",
+            "m11.miners.example.com",
             changed,
         )
         self.assertIn(
-            "m192-168-1-12.miners.example.com",
+            "m12.miners.example.com",
             changed,
         )
 

@@ -173,9 +173,7 @@ for script in \
     openasicmanager-remote-web-sync
 do
 
-    if [ -f \
-        "$INSTALL_DIR/scripts/$script"
-    ]; then
+    if [ -f "$INSTALL_DIR/scripts/$script" ]; then
 
         chmod 0755 \
             "$INSTALL_DIR/scripts/$script"
@@ -191,9 +189,7 @@ done
 echo
 echo "[5/8] Preparing Python environment..."
 
-if [ ! -x \
-    "$INSTALL_DIR/venv/bin/python"
-]; then
+if [ ! -x "$INSTALL_DIR/venv/bin/python" ]; then
 
     python3 -m venv \
         "$INSTALL_DIR/venv"
@@ -223,9 +219,7 @@ echo "[6/8] Preparing configuration..."
 ENV_FILE="$CONFIG_DIR/openasicmanager.env"
 
 
-if [ ! -f \
-    "$ENV_FILE"
-]; then
+if [ ! -f "$ENV_FILE" ]; then
 
     cp \
         "$SOURCE_DIR/.env.example" \

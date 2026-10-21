@@ -49,6 +49,11 @@ class RemoteWebSyncUnitTests(unittest.TestCase):
             "ProtectSystem=strict",
             content,
         )
+        self.assertIn(
+            "ReadWritePaths=/etc/nginx/sites-available "
+            "/etc/nginx/sites-enabled /run /var/log/nginx",
+            content,
+        )
         self.assertNotIn(
             "User=openasicmanager",
             content,

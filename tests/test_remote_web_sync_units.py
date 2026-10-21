@@ -51,7 +51,8 @@ class RemoteWebSyncUnitTests(unittest.TestCase):
         )
         self.assertIn(
             "ReadWritePaths=/etc/nginx/sites-available "
-            "/etc/nginx/sites-enabled /run /var/log/nginx",
+            "/etc/nginx/sites-enabled /run /var/log/nginx "
+            "/var/lib/openasicmanager",
             content,
         )
         self.assertNotIn(

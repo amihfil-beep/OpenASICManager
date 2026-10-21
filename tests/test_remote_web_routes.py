@@ -76,7 +76,7 @@ class RemoteWebRoutesTests(unittest.TestCase):
             "ip": "192.0.2.7",
         }
         get_miner.return_value = miner
-        host_for_ip.return_value = "m192-0-2-7.remote.example.com"
+        host_for_ip.return_value = "m7.remote.example.com"
         events = []
         endpoint = self.endpoint(
             "/remote/{miner_id}",
@@ -88,7 +88,7 @@ class RemoteWebRoutesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response.headers["location"],
-            "https://m192-0-2-7.remote.example.com/",
+            "https://m7.remote.example.com/",
         )
         self.assertIn("asic_remote_session=signed-token", response.headers["set-cookie"])
         self.assertEqual(events[0]["action"], "REMOTE_WEB_OPEN")
@@ -102,7 +102,7 @@ class RemoteWebRoutesTests(unittest.TestCase):
         )
         request = SimpleNamespace(
             cookies={"asic_remote_session": "bad"},
-            headers={"x-remote-host": "m192-0-2-7.remote.example.com"},
+            headers={"x-remote-host": "m7.remote.example.com"},
         )
         response = endpoint(request)
         self.assertEqual(response.status_code, 401)
@@ -123,7 +123,7 @@ class RemoteWebRoutesTests(unittest.TestCase):
         )
         request = SimpleNamespace(
             cookies={"asic_remote_session": "good"},
-            headers={"x-remote-host": "m192-0-2-7.remote.example.com"},
+            headers={"x-remote-host": "m7.remote.example.com"},
         )
         response = endpoint(request)
         self.assertEqual(response.status_code, 204)

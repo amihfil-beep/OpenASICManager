@@ -60,19 +60,13 @@ def remote_host_for_ip(
         return None
 
 
-    encoded_ip = (
-        str(address)
-        .replace(
-            ".",
-            "-",
-        )
-    )
+    host_number = str(address).rsplit(".", 1)[1]
 
 
     return (
         "m"
         +
-        encoded_ip
+        host_number
         +
         "."
         +

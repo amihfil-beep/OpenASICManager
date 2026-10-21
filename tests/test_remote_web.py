@@ -149,7 +149,7 @@ class RemoteWebTokenTests(unittest.TestCase):
             remote_web.remote_web_host_for_ip(
                 "192.0.2.5"
             ),
-            "m192-0-2-5.remote.example.com",
+            "m5.remote.example.com",
         )
 
         self.assertIsNone(
@@ -157,6 +157,20 @@ class RemoteWebTokenTests(unittest.TestCase):
                 "198.51.100.5"
             )
         )
+
+
+        remote_web.REMOTE_WEB_NETWORK = ipaddress.ip_network(
+            "192.168.0.0/16"
+        )
+
+        self.assertEqual(
+            remote_web.remote_web_host_for_ip(
+                "192.168.1.81"
+            ),
+            "m81.remote.example.com",
+        )
+
+
 
 
 class RemoteWebRepositoryTests(unittest.TestCase):
@@ -217,7 +231,7 @@ class RemoteWebRepositoryTests(unittest.TestCase):
 
     def test_miner_lookup_by_remote_host(self):
         miner = remote_web.remote_web_miner_for_host(
-            "m192-0-2-8.remote.example.com"
+            "m8.remote.example.com"
         )
 
         self.assertIsNotNone(miner)
@@ -226,7 +240,7 @@ class RemoteWebRepositoryTests(unittest.TestCase):
 
         self.assertIsNone(
             remote_web.remote_web_miner_for_host(
-                "m192-0-2-9.remote.example.com"
+                "m9.remote.example.com"
             )
         )
 

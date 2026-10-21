@@ -2861,6 +2861,252 @@ a:hover {
 </div>
 
 
+<div
+    id="serviceHistoryBackdrop"
+    class="modal-backdrop"
+    onclick="serviceHistoryBackdropClick(event)"
+>
+
+<div
+    class="history-modal"
+    onclick="event.stopPropagation()"
+    style="max-width:1150px"
+>
+
+    <div class="history-header">
+
+        <div>
+
+            <h2
+                id="serviceHistoryTitle"
+                style="margin:0"
+            >
+                Service History
+            </h2>
+
+            <div
+                class="muted"
+                style="margin-top:5px"
+            >
+                Physical maintenance and repair journal.
+                Service records are informational only and never
+                PAUSE, RESUME or REBOOT an ASIC.
+            </div>
+
+        </div>
+
+        <button
+            class="close-button"
+            onclick="closeServiceHistory()"
+        >
+            CLOSE
+        </button>
+
+    </div>
+
+
+    <div class="maintenance-form">
+
+        <div class="maintenance-grid">
+
+            <div class="maintenance-field">
+
+                <label for="servicePerformedAt">
+                    Дата и время работы
+                </label>
+
+                <input
+                    id="servicePerformedAt"
+                    type="datetime-local"
+                    step="60"
+                >
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="serviceWorkType">
+                    Тип работы
+                </label>
+
+                <select id="serviceWorkType">
+
+                    <option value="">
+                        Выберите тип...
+                    </option>
+
+                    <option value="THERMAL_SERVICE">
+                        Термообслуживание / промазка
+                    </option>
+
+                    <option value="CLEANING">
+                        Чистка
+                    </option>
+
+                    <option value="FAN_REPLACEMENT">
+                        Замена вентилятора
+                    </option>
+
+                    <option value="HASHBOARD_REPAIR">
+                        Ремонт хеш-платы
+                    </option>
+
+                    <option value="HASHBOARD_REPLACEMENT">
+                        Замена хеш-платы
+                    </option>
+
+                    <option value="CONTROL_BOARD_REPLACEMENT">
+                        Замена платы управления
+                    </option>
+
+                    <option value="PSU_REPLACEMENT">
+                        Замена блока питания
+                    </option>
+
+                    <option value="OTHER">
+                        Другое
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="servicePerformedBy">
+                    Исполнитель
+                </label>
+
+                <input
+                    id="servicePerformedBy"
+                    type="text"
+                    maxlength="120"
+                    placeholder="ФИО / сервисный инженер"
+                >
+
+            </div>
+
+
+            <div class="maintenance-field">
+
+                <label for="servicePartSerial">
+                    Деталь / серийный номер
+                </label>
+
+                <input
+                    id="servicePartSerial"
+                    type="text"
+                    maxlength="200"
+                    placeholder="Необязательно"
+                >
+
+            </div>
+
+
+            <div class="maintenance-field full">
+
+                <label for="serviceDescription">
+                    Комментарий
+                </label>
+
+                <textarea
+                    id="serviceDescription"
+                    maxlength="1000"
+                    rows="4"
+                    placeholder="Что именно было сделано"
+                    style="
+                        box-sizing:border-box;
+                        width:100%;
+                        padding:8px 10px;
+                        color:#e7e9ee;
+                        background:#111318;
+                        border:1px solid #343b48;
+                        border-radius:7px;
+                        resize:vertical;
+                        font:inherit;
+                    "
+                ></textarea>
+
+            </div>
+
+        </div>
+
+
+        <div
+            style="
+                display:flex;
+                justify-content:space-between;
+                gap:12px;
+                align-items:center;
+                flex-wrap:wrap;
+                margin-top:14px;
+            "
+        >
+
+            <div class="muted small">
+                Planned Maintenance remains separate:
+                this entry only records work already performed.
+            </div>
+
+            <button
+                id="serviceRecordSaveButton"
+                class="start"
+                onclick="saveServiceRecord()"
+            >
+                + ADD SERVICE RECORD
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="serviceHistoryStatus"
+        class="history-status"
+    >
+        Loading service history...
+    </div>
+
+
+    <div class="table-wrap">
+
+        <table style="min-width:980px">
+
+            <thead>
+
+                <tr>
+                    <th>Дата</th>
+                    <th>Работа</th>
+                    <th>Исполнитель</th>
+                    <th>Деталь / серийный номер</th>
+                    <th>Комментарий</th>
+                    <th>Записал</th>
+                </tr>
+
+            </thead>
+
+            <tbody id="serviceHistoryRows">
+
+                <tr>
+                    <td colspan="6">
+                        Loading...
+                    </td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+</div>
+
+
 <div class="table-wrap">
 
 <table class="miner-table">
@@ -2989,6 +3235,10 @@ a:hover {
 
     <th>
         Control
+    </th>
+
+    <th>
+        Service
     </th>
 
     <th>
@@ -15084,6 +15334,790 @@ else {
 }
 
 
+
+// ============================================================
+// ASIC SERVICE HISTORY
+// ============================================================
+
+const SERVICE_WORK_TYPE_LABELS = {
+
+    THERMAL_SERVICE:
+        "Термообслуживание / промазка",
+
+    CLEANING:
+        "Чистка",
+
+    FAN_REPLACEMENT:
+        "Замена вентилятора",
+
+    HASHBOARD_REPAIR:
+        "Ремонт хеш-платы",
+
+    HASHBOARD_REPLACEMENT:
+        "Замена хеш-платы",
+
+    CONTROL_BOARD_REPLACEMENT:
+        "Замена платы управления",
+
+    PSU_REPLACEMENT:
+        "Замена блока питания",
+
+    OTHER:
+        "Другое",
+};
+
+
+window.__serviceHistoryMinerId =
+    null;
+
+
+function serviceWorkTypeLabel(
+    value
+) {
+
+    const normalized =
+        String(
+            value || ""
+        ).toUpperCase();
+
+    return (
+        SERVICE_WORK_TYPE_LABELS[
+            normalized
+        ]
+        ||
+        normalized
+        ||
+        "—"
+    );
+}
+
+
+function serviceTime(
+    value
+) {
+
+    if (
+        value === null
+        ||
+        value === undefined
+        ||
+        value === ""
+    ) {
+        return "—";
+    }
+
+    return new Date(
+        Number(value) * 1000
+    ).toLocaleString();
+}
+
+
+function serviceDate(
+    value
+) {
+
+    if (
+        value === null
+        ||
+        value === undefined
+        ||
+        value === ""
+    ) {
+        return "—";
+    }
+
+    return new Date(
+        Number(value) * 1000
+    ).toLocaleDateString();
+}
+
+
+function serviceInputValue(
+    date
+) {
+
+    const adjusted =
+        new Date(
+            date.getTime()
+            -
+            date.getTimezoneOffset()
+            * 60000
+        );
+
+    return adjusted
+        .toISOString()
+        .slice(0, 16);
+}
+
+
+function serviceLastHTML(
+    miner
+) {
+
+    const item =
+        miner.last_service;
+
+    if (!item) {
+
+        return `
+            <div
+                class="muted small"
+                title="No recorded physical service history"
+            >
+                No records
+            </div>
+        `;
+    }
+
+    return `
+        <div
+            class="small"
+            title="${esc(
+                serviceWorkTypeLabel(
+                    item.work_type
+                )
+            )}"
+        >
+            <strong>
+                ${esc(
+                    serviceDate(
+                        item.performed_at
+                    )
+                )}
+            </strong>
+        </div>
+
+        <div
+            class="muted small"
+            style="
+                margin-top:2px;
+                max-width:160px;
+                overflow:hidden;
+                text-overflow:ellipsis;
+            "
+        >
+            ${esc(
+                serviceWorkTypeLabel(
+                    item.work_type
+                )
+            )}
+        </div>
+    `;
+}
+
+
+function serviceMiner(
+    minerId
+) {
+
+    const miners =
+        window.__asicLastStatus
+        ?.miners
+        ||
+        [];
+
+    return miners.find(
+        miner =>
+            Number(miner.id)
+            ===
+            Number(minerId)
+    );
+}
+
+
+function resetServiceRecordForm() {
+
+    document.getElementById(
+        "servicePerformedAt"
+    ).value =
+        serviceInputValue(
+            new Date()
+        );
+
+    document.getElementById(
+        "serviceWorkType"
+    ).value =
+        "";
+
+    document.getElementById(
+        "servicePartSerial"
+    ).value =
+        "";
+
+    document.getElementById(
+        "serviceDescription"
+    ).value =
+        "";
+
+    const performer =
+        document.getElementById(
+            "servicePerformedBy"
+        );
+
+    if (
+        !performer.value
+    ) {
+
+        performer.value =
+            window.__asicCurrentUser
+            ||
+            "";
+    }
+}
+
+
+async function openServiceHistory(
+    minerId
+) {
+
+    const id =
+        Number(
+            minerId
+        );
+
+    window.__serviceHistoryMinerId =
+        id;
+
+    const miner =
+        serviceMiner(
+            id
+        );
+
+
+    document.getElementById(
+        "serviceHistoryTitle"
+    ).textContent =
+        (
+            "Service History"
+            +
+            (
+                miner
+                ? (
+                    " · "
+                    +
+                    miner.name
+                    +
+                    " · "
+                    +
+                    miner.ip
+                )
+                :
+                (
+                    " · ASIC #"
+                    +
+                    id
+                )
+            )
+        );
+
+
+    resetServiceRecordForm();
+
+
+    document.getElementById(
+        "serviceHistoryRows"
+    ).innerHTML = `
+        <tr>
+            <td colspan="6">
+                Loading...
+            </td>
+        </tr>
+    `;
+
+
+    document.getElementById(
+        "serviceHistoryStatus"
+    ).textContent =
+        "Loading service history...";
+
+
+    document.getElementById(
+        "serviceHistoryBackdrop"
+    ).classList.add(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "hidden";
+
+
+    await loadServiceHistory(
+        id
+    );
+}
+
+
+function closeServiceHistory() {
+
+    window.__serviceHistoryMinerId =
+        null;
+
+    document.getElementById(
+        "serviceHistoryBackdrop"
+    ).classList.remove(
+        "open"
+    );
+
+    document.body.style.overflow =
+        "";
+}
+
+
+function serviceHistoryBackdropClick(
+    event
+) {
+
+    if (
+        event.target.id
+        ===
+        "serviceHistoryBackdrop"
+    ) {
+
+        closeServiceHistory();
+    }
+}
+
+
+function renderServiceHistory(
+    data
+) {
+
+    const records =
+        Array.isArray(
+            data.records
+        )
+        ? data.records
+        : [];
+
+
+    let html = "";
+
+
+    for (
+        const item
+        of records
+    ) {
+
+        html += `
+            <tr>
+
+                <td>
+                    <strong>
+                        ${esc(
+                            serviceTime(
+                                item.performed_at
+                            )
+                        )}
+                    </strong>
+                </td>
+
+                <td>
+                    ${esc(
+                        serviceWorkTypeLabel(
+                            item.work_type
+                        )
+                    )}
+                </td>
+
+                <td>
+                    ${esc(
+                        item.performed_by
+                        || "—"
+                    )}
+                </td>
+
+                <td>
+                    ${esc(
+                        item.part_serial
+                        || "—"
+                    )}
+                </td>
+
+                <td
+                    style="
+                        max-width:320px;
+                        white-space:normal;
+                    "
+                >
+                    ${esc(
+                        item.description
+                        || "—"
+                    )}
+                </td>
+
+                <td>
+                    ${esc(
+                        item.created_by
+                        || "—"
+                    )}
+
+                    <div
+                        class="muted small"
+                        style="margin-top:3px"
+                    >
+                        ${esc(
+                            serviceTime(
+                                item.created_at
+                            )
+                        )}
+                    </div>
+                </td>
+
+            </tr>
+        `;
+    }
+
+
+    if (!html) {
+
+        html = `
+            <tr>
+                <td colspan="6">
+                    No service records yet.
+                </td>
+            </tr>
+        `;
+    }
+
+
+    document.getElementById(
+        "serviceHistoryRows"
+    ).innerHTML =
+        html;
+
+
+    document.getElementById(
+        "serviceHistoryStatus"
+    ).textContent =
+        (
+            records.length
+            +
+            " service record(s). "
+            +
+            "History is informational only; "
+            +
+            "ASIC control and Planned Maintenance "
+            +
+            "remain independent."
+        );
+}
+
+
+async function loadServiceHistory(
+    minerId
+) {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/miners/"
+                +
+                Number(minerId)
+                +
+                "/service-history?limit=100",
+                {
+                    cache:
+                        "no-store",
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Service history request failed"
+            );
+        }
+
+
+        renderServiceHistory(
+            data
+        );
+
+    }
+
+    catch (error) {
+
+        document.getElementById(
+            "serviceHistoryStatus"
+        ).textContent =
+            (
+                "Service history error: "
+                +
+                error.message
+            );
+
+        document.getElementById(
+            "serviceHistoryRows"
+        ).innerHTML = `
+            <tr>
+                <td colspan="6">
+                    Unable to load service history.
+                </td>
+            </tr>
+        `;
+    }
+}
+
+
+function serviceRecordPayload() {
+
+    const rawDate =
+        document.getElementById(
+            "servicePerformedAt"
+        ).value;
+
+
+    if (!rawDate) {
+
+        throw new Error(
+            "Укажите дату и время работы."
+        );
+    }
+
+
+    const date =
+        new Date(
+            rawDate
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        throw new Error(
+            "Некорректная дата работы."
+        );
+    }
+
+
+    const workType =
+        document.getElementById(
+            "serviceWorkType"
+        ).value;
+
+
+    if (!workType) {
+
+        throw new Error(
+            "Выберите тип работы."
+        );
+    }
+
+
+    const performedBy =
+        document.getElementById(
+            "servicePerformedBy"
+        ).value.trim();
+
+
+    if (!performedBy) {
+
+        throw new Error(
+            "Укажите исполнителя."
+        );
+    }
+
+
+    const description =
+        document.getElementById(
+            "serviceDescription"
+        ).value.trim();
+
+
+    if (
+        workType === "OTHER"
+        &&
+        !description
+    ) {
+
+        throw new Error(
+            "Для типа «Другое» "
+            +
+            "нужно добавить комментарий."
+        );
+    }
+
+
+    return {
+        performed_at:
+            Math.floor(
+                date.getTime()
+                /
+                1000
+            ),
+
+        work_type:
+            workType,
+
+        performed_by:
+            performedBy,
+
+        part_serial:
+            document.getElementById(
+                "servicePartSerial"
+            ).value.trim(),
+
+        description:
+            description,
+    };
+}
+
+
+async function saveServiceRecord() {
+
+    const minerId =
+        window.__serviceHistoryMinerId;
+
+
+    if (!minerId) {
+        return;
+    }
+
+
+    const button =
+        document.getElementById(
+            "serviceRecordSaveButton"
+        );
+
+    const status =
+        document.getElementById(
+            "serviceHistoryStatus"
+        );
+
+
+    button.disabled =
+        true;
+
+    status.textContent =
+        "Saving service record...";
+
+
+    try {
+
+        const payload =
+            serviceRecordPayload();
+
+
+        const response =
+            await fetch(
+                "/api/miners/"
+                +
+                Number(minerId)
+                +
+                "/service-history",
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        )
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                data.detail
+                ||
+                "Service record create failed"
+            );
+        }
+
+
+        document.getElementById(
+            "servicePartSerial"
+        ).value =
+            "";
+
+        document.getElementById(
+            "serviceDescription"
+        ).value =
+            "";
+
+        document.getElementById(
+            "servicePerformedAt"
+        ).value =
+            serviceInputValue(
+                new Date()
+            );
+
+
+        await loadServiceHistory(
+            minerId
+        );
+
+        await loadStatus();
+
+        await loadLogs();
+
+    }
+
+    catch (error) {
+
+        status.textContent =
+            (
+                "Service record error: "
+                +
+                error.message
+            );
+
+        alert(
+            error.message
+        );
+
+    }
+
+    finally {
+
+        button.disabled =
+            false;
+    }
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape"
+            &&
+            document.getElementById(
+                "serviceHistoryBackdrop"
+            ).classList.contains(
+                "open"
+            )
+        ) {
+
+            closeServiceHistory();
+        }
+    }
+);
+
+
 async function loadStatus() {
 
     try {
@@ -15783,6 +16817,23 @@ async function loadStatus() {
                         `
                         : ""
                     }
+
+                </td>
+
+
+                <td>
+
+                    ${serviceLastHTML(m)}
+
+                    <button
+                        class="secondary mini"
+                        style="margin-top:5px"
+                        onclick="openServiceHistory(
+                            ${m.id}
+                        )"
+                    >
+                        SERVICE
+                    </button>
 
                 </td>
 

@@ -82,6 +82,20 @@ class SystemRoutesTests(unittest.TestCase):
                  "api.system.effective_schedule_states",
                  return_value=schedule_states,
              ) as effective_states, \
+             patch(
+                 "api.system.latest_service_records_by_miner",
+                 return_value={
+                     1: {
+                         "id": 41,
+                         "miner_id": 1,
+                         "performed_at": 1700000000,
+                         "work_type": "FAN_REPLACEMENT",
+                         "description": "Fan 2 replaced",
+                         "part_serial": "FAN-001",
+                         "performed_by": "Technician A",
+                     },
+                 },
+             ) as latest_service, \
              patch("api.system.miner_status_items", return_value=miners) as status_items:
 
             result = self.endpoint("/api/status")()
@@ -140,7 +154,27 @@ class SystemRoutesTests(unittest.TestCase):
                 "applicable"
             ]
         )
+
+        self.assertEqual(
+            result[
+                "miners"
+            ][
+                0
+            ][
+                "last_service"
+            ],
+            {
+                "id": 41,
+                "performed_at": 1700000000,
+                "work_type": "FAN_REPLACEMENT",
+                "description": "Fan 2 replaced",
+                "part_serial": "FAN-001",
+                "performed_by": "Technician A",
+            },
+        )
+
         status_items.assert_called_once_with(rows, jobs)
+        latest_service.assert_called_once_with()
         effective_states.assert_called_once()
         self.assertEqual(
             effective_states.call_args.args[0],

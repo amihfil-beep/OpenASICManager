@@ -22,6 +22,7 @@ __all__ = (
     "create_service_record",
     "list_service_records",
     "latest_service_record",
+    "latest_service_records_by_miner",
 )
 
 
@@ -123,6 +124,58 @@ def list_service_records(
                 ),
             ).fetchall()
         )
+
+    finally:
+        conn.close()
+
+
+
+
+def latest_service_records_by_miner():
+    """Return newest service record for every miner."""
+
+    conn = db()
+
+    try:
+        rows = conn.execute(
+            """
+            SELECT r.*
+
+            FROM miner_service_records r
+
+            WHERE NOT EXISTS (
+                SELECT 1
+
+                FROM miner_service_records newer
+
+                WHERE
+                    newer.miner_id=r.miner_id
+                    AND
+                    (
+                        newer.performed_at
+                            >
+                        r.performed_at
+
+                        OR
+
+                        (
+                            newer.performed_at
+                                =
+                            r.performed_at
+                            AND
+                            newer.id
+                                >
+                            r.id
+                        )
+                    )
+            )
+            """
+        ).fetchall()
+
+        return {
+            int(row["miner_id"]): row
+            for row in rows
+        }
 
     finally:
         conn.close()

@@ -10,6 +10,7 @@ from db import init_db
 from service_history.repository import (
     create_service_record,
     latest_service_record,
+    latest_service_records_by_miner,
     list_service_records,
 )
 
@@ -151,6 +152,17 @@ class ServiceHistoryRepositoryTests(
 
         self.assertEqual(
             latest["id"],
+            second["id"],
+        )
+
+        latest_by_miner = (
+            latest_service_records_by_miner()
+        )
+
+        self.assertEqual(
+            latest_by_miner[
+                self.miner_id
+            ]["id"],
             second["id"],
         )
 

@@ -16,6 +16,9 @@ from scheduler.repository import (
     next_transition,
     effective_schedule_states,
 )
+from service_history.repository import (
+    latest_service_records_by_miner,
+)
 
 
 TIMEZONE_NAME = app_config.TIMEZONE
@@ -66,7 +69,70 @@ def create_system_router():
         )
 
 
+        latest_service = (
+            latest_service_records_by_miner()
+        )
+
+
         for miner in miners:
+
+            service_row = (
+                latest_service.get(
+                    int(
+                        miner["id"]
+                    )
+                )
+            )
+
+
+            miner[
+                "last_service"
+            ] = (
+                {
+                    "id":
+                        int(
+                            service_row["id"]
+                        ),
+
+                    "performed_at":
+                        int(
+                            service_row[
+                                "performed_at"
+                            ]
+                        ),
+
+                    "work_type":
+                        str(
+                            service_row[
+                                "work_type"
+                            ]
+                        ),
+
+                    "description":
+                        (
+                            service_row[
+                                "description"
+                            ]
+                            or ""
+                        ),
+
+                    "part_serial":
+                        service_row[
+                            "part_serial"
+                        ],
+
+                    "performed_by":
+                        (
+                            service_row[
+                                "performed_by"
+                            ]
+                            or ""
+                        ),
+                }
+                if service_row is not None
+                else None
+            )
+
 
             details = (
                 schedule_states.get(

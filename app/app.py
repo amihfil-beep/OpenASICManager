@@ -23,6 +23,7 @@ from api.notifications import create_notifications_router
 from api.operations import create_operations_router
 from api.remote_web import create_remote_web_router
 from api.scheduler import create_scheduler_router
+from api.service_history import create_service_history_router
 from api.system import create_system_router
 from api.telemetry import create_telemetry_router
 from audit.identity import (
@@ -182,6 +183,11 @@ app.include_router(
 )
 app.include_router(
     create_maintenance_router(
+        log_event
+    )
+)
+app.include_router(
+    create_service_history_router(
         log_event
     )
 )

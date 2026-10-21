@@ -650,6 +650,54 @@ def init_db():
     """)
 
 
+    # --------------------------------------------------------
+    # ASIC physical service history
+    # --------------------------------------------------------
+
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS miner_service_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        miner_id INTEGER NOT NULL,
+
+        performed_at INTEGER NOT NULL,
+
+        work_type TEXT NOT NULL,
+
+        description TEXT
+            NOT NULL DEFAULT '',
+
+        part_serial TEXT,
+
+        performed_by TEXT
+            NOT NULL DEFAULT '',
+
+        created_by TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+
+        CHECK (
+            work_type IN (
+                'THERMAL_SERVICE',
+                'CLEANING',
+                'FAN_REPLACEMENT',
+                'HASHBOARD_REPAIR',
+                'HASHBOARD_REPLACEMENT',
+                'CONTROL_BOARD_REPLACEMENT',
+                'PSU_REPLACEMENT',
+                'OTHER'
+            )
+        )
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_service_records_miner
+    ON miner_service_records(
+        miner_id,
+        performed_at DESC,
+        id DESC
+    );
+    """)
+
+
     issue_columns = {
         row["name"]
         for row in conn.execute(

@@ -419,5 +419,48 @@ class DashboardTemplateTests(unittest.TestCase):
 
 
 
+    def test_dashboard_contains_service_history_workflow(self):
+        content = dashboard_html()
+
+        expected = (
+            "serviceHistoryBackdrop",
+            "serviceHistoryTitle",
+            "serviceHistoryRows",
+            "serviceHistoryStatus",
+            "servicePerformedAt",
+            "serviceWorkType",
+            "servicePerformedBy",
+            "servicePartSerial",
+            "serviceDescription",
+            "serviceRecordSaveButton",
+            "SERVICE_WORK_TYPE_LABELS",
+            "serviceWorkTypeLabel",
+            "serviceLastHTML",
+            "openServiceHistory",
+            "closeServiceHistory",
+            "loadServiceHistory",
+            "renderServiceHistory",
+            "serviceRecordPayload",
+            "saveServiceRecord",
+            "/service-history?limit=100",
+            "/service-history",
+            "last_service",
+            "Термообслуживание / промазка",
+            "Замена вентилятора",
+            "Замена хеш-платы",
+            "Замена платы управления",
+            "Замена блока питания",
+            "History is informational only",
+            "Planned Maintenance remains separate",
+        )
+
+        for marker in expected:
+            with self.subTest(marker=marker):
+                self.assertIn(
+                    marker,
+                    content,
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

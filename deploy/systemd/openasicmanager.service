@@ -14,7 +14,8 @@ WorkingDirectory=/opt/openasicmanager/app
 
 EnvironmentFile=-/etc/openasicmanager/openasicmanager.env
 
-ExecStart=/opt/openasicmanager/venv/bin/uvicorn \
+ExecStart=/opt/openasicmanager/venv/bin/python \
+    -m uvicorn \
     app:app \
     --host 127.0.0.1 \
     --port 8088 \

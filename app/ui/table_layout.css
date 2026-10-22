@@ -1,0 +1,73 @@
+/* Main ASIC table layout controls. */
+
+.asic-table-layout-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px;
+}
+
+.asic-table-top-scroll {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 14px;
+    margin-bottom: 5px;
+    scrollbar-gutter: stable;
+}
+
+.asic-table-top-scroll-inner {
+    height: 1px;
+}
+
+.miner-table.asic-table-resizable {
+    table-layout: fixed;
+    width: auto;
+}
+
+.miner-table.asic-table-resizable th {
+    position: sticky;
+}
+
+.miner-table.asic-table-resizable th,
+.miner-table.asic-table-resizable td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.miner-table.asic-table-resizable thead th {
+    position: sticky;
+}
+
+.asic-column-resizer {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 7px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    z-index: 20;
+}
+
+.asic-column-resizer::after {
+    content: "";
+    position: absolute;
+    top: 20%;
+    bottom: 20%;
+    left: 3px;
+    width: 1px;
+    background: transparent;
+}
+
+.asic-column-resizer:hover::after,
+body.asic-column-resizing .asic-column-resizer.active::after {
+    background: #67b7ff;
+}
+
+body.asic-column-resizing {
+    cursor: col-resize;
+    user-select: none;
+}

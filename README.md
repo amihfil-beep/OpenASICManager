@@ -24,16 +24,20 @@ The project was created as a lightweight alternative to heavyweight mining-manag
 - GLOBAL / GROUP / MINER anomaly-policy inheritance;
 - operator issue acknowledgement and notes;
 - farm, miner and snapshot-based group maintenance;
+- persistent per-ASIC physical service history;
 - bounded safe bulk PAUSE / RESUME / REBOOT;
+- resizable main ASIC inventory columns with persisted widths;
 - configurable Telegram incident notifications;
 - audit logging;
 - optional secure access to the original ASIC web interface.
 
 ## Current release
 
-**0.7.0**
+**0.8.2**
 
-OpenASICManager 0.7.0 is a group-aware scheduler release. It adds explicit FARM and GROUP scheduler scopes, deterministic effective schedules per ASIC, current-membership GROUP scheduling, server-derived preview before saving or enabling scoped rules, and per-miner effective scheduler visibility while preserving the existing verified per-miner control pipeline.
+OpenASICManager 0.8.2 is the current public release. It includes persistent per-ASIC physical service history, resizable main ASIC inventory columns with browser-persisted widths, and a transactional-upgrade reliability fix for staged virtualenv relocation.
+
+The 0.8.2 upgrade path starts Uvicorn through the activated installation's virtualenv Python, avoiding stale console-script paths after the staged application tree is moved into place.
 
 The project has been primarily developed and tested with **Antminer T21** devices.
 

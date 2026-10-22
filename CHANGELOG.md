@@ -4,6 +4,65 @@ All notable changes to OpenASICManager will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-22
+
+Upgrade reliability hotfix.
+
+### Fixed
+
+- Start Uvicorn through `/opt/openasicmanager/venv/bin/python -m uvicorn`.
+- Prevent staged upgrades from failing with systemd `203/EXEC` after the prepared application tree is moved into place.
+- Add regression coverage for the production systemd runtime entrypoint.
+
+### Compatibility
+
+- `VERSION` and runtime `APP_VERSION` are aligned at `0.8.2`.
+- Version 0.8.2 supersedes 0.8.1 as the recommended upgrade target.
+- Existing transactional health checks and rollback behavior remain unchanged.
+
+## [0.8.1] - 2026-10-22
+
+Dashboard usability update.
+
+### Added
+
+- Drag-resizable columns for the main ASIC inventory table.
+- Browser-local persistence of selected column widths.
+- Synchronized horizontal scrolling above and below the main ASIC table.
+- `RESET COLUMNS` control and minimum column widths.
+- Regression coverage for the resizable table layout.
+
+### Compatibility
+
+- No scheduler, API, database or ASIC-control semantics are changed.
+
+## [0.8.0] - 2026-10-21
+
+Per-ASIC physical service-history release and clean-deployment hardening.
+
+### Added
+
+- Persistent physical service history linked to `miner_id`.
+- Per-miner service-history create/list API.
+- Service work-type validation and `OTHER` category.
+- Per-record performed time, description, part/serial information, performer and audit metadata.
+- Latest-service summary in the fleet status model.
+- Service History workflow in the dashboard.
+- Regression coverage for miner linkage, validation, missing miners and control-job isolation.
+
+### Fixed
+
+- Repair malformed installer shell test expressions found during clean Ubuntu 24.04 deployment.
+- Correct Remote Web synchronization systemd sandbox access required by nginx runtime/log paths.
+- Allow Remote Web synchronization to access the live SQLite WAL database.
+- Preserve the established `m<last-octet>.<base-domain>` Remote Web hostname format.
+
+### Safety and compatibility
+
+- Service-history writes never queue PAUSE, RESUME or REBOOT.
+- Service history does not alter scheduler state, manual overrides, anomaly state or Planned Maintenance.
+- Service history and Planned Maintenance remain separate concepts.
+
 ## [0.7.0] - 2026-09-25
 
 Group-aware scheduler release focused on deterministic per-miner scheduling, explicit FARM and GROUP rule scopes, safe server-derived rule preview and clear effective scheduling visibility while preserving the existing verified per-miner control pipeline.

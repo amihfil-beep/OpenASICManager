@@ -115,6 +115,44 @@ sudo python3 scripts/openasicmanager-upgrade \
     --health-timeout 90
 ```
 
+## 0.8.2 upgrade notes
+
+Version 0.8.2 fixes a virtualenv-relocation issue discovered during a transactional upgrade to 0.8.1.
+
+The upgrader prepares the target virtualenv inside a temporary staging application tree before production downtime. Python console scripts such as `venv/bin/uvicorn` contain an absolute interpreter path in their shebang.
+
+After the staged tree is moved into `/opt/openasicmanager`, that temporary path no longer exists. With the affected 0.8.1 service unit, systemd could therefore fail to start the application with:
+
+```text
+status=203/EXEC
+```
+
+The normal transactional health check then triggers rollback to the previous healthy installation.
+
+Version 0.8.2 avoids the relocation-sensitive console script and starts the application through:
+
+```text
+/opt/openasicmanager/venv/bin/python -m uvicorn
+```
+
+This resolves Uvicorn from the activated virtualenv while keeping the interpreter path valid after the application tree is moved into place.
+
+If an attempted 0.8.1 upgrade rolled back successfully, use 0.8.2 as the next upgrade target rather than retrying 0.8.1.
+
+Do not disable the health check or automatic rollback to work around this failure.
+
+The firmware-detection unit already starts through the virtualenv Python interpreter and is not affected by this issue.
+
+## 0.8.0 upgrade notes
+
+Version 0.8.0 adds persistent physical service history for managed ASICs.
+
+On first startup, normal SQLite schema initialization creates the service-history storage required by the feature. Existing miners remain unchanged and no historical service records are generated automatically.
+
+Service-history initialization does not issue ASIC control commands and does not change scheduler state, manual overrides, anomaly state or Planned Maintenance windows.
+
+Clean Ubuntu 24.04 deployments should use the current 0.8.2 release, which also contains installer and Remote Web synchronization fixes found during the initial 0.8.0 deployment validation.
+
 ## 0.6.0 upgrade notes
 
 Upgrading a supported public 0.5.0 installation to 0.6.0 uses the same transactional upgrade path described above.

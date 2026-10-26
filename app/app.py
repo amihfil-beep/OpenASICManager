@@ -2,6 +2,7 @@
 
 import threading
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -97,13 +98,10 @@ scheduler_runtime = SchedulerRuntime(
     queue_control=queue_control,
     stop_event=stop_event,
 )
-
-
-def scheduler_loop():
-    return run_scheduler_loop(
-        scheduler_runtime
-    )
-
+scheduler_loop = partial(
+    run_scheduler_loop,
+    scheduler_runtime,
+)
 
 anomaly_runtime = AnomalyRuntime(
     log_event=log_event,

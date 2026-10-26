@@ -16,6 +16,7 @@ from scheduler.repository import (
     next_transition,
     effective_schedule_states,
 )
+from scheduler.supervisor import scheduler_health_snapshot
 from service_history.repository import (
     latest_service_records_by_miner,
 )
@@ -30,13 +31,20 @@ def create_system_router():
 
     @router.get("/health")
     def health():
+        scheduler = scheduler_health_snapshot()
+
         return {
-            "status": "ok",
+            "status": (
+                "ok"
+                if scheduler["healthy"]
+                else "degraded"
+            ),
             "version": APP_VERSION,
             "time":
                 datetime.now(
                     MOSCOW
                 ).isoformat(),
+            "scheduler": scheduler,
         }
 
 

@@ -2,6 +2,7 @@
 
 import threading
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -43,6 +44,7 @@ from scheduler.repository import (
     next_transition_for_miner,
 )
 from scheduler.service import SchedulerRuntime
+from scheduler.supervisor import scheduler_loop as run_scheduler_loop
 from telemetry.service import TelemetryRuntime
 from ui.dashboard import dashboard_html
 
@@ -96,7 +98,10 @@ scheduler_runtime = SchedulerRuntime(
     queue_control=queue_control,
     stop_event=stop_event,
 )
-scheduler_loop = scheduler_runtime.run
+scheduler_loop = partial(
+    run_scheduler_loop,
+    scheduler_runtime,
+)
 
 anomaly_runtime = AnomalyRuntime(
     log_event=log_event,

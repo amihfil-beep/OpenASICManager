@@ -30,12 +30,53 @@ class SystemRoutesTests(unittest.TestCase):
         })
 
     def test_health_preserves_version_and_timestamp(self):
-        result = self.endpoint("/health")()
+        scheduler = {
+            "status": "ok",
+            "healthy": True,
+            "max_age_seconds": 60,
+            "started_at": 100.0,
+            "last_success_at": 120.0,
+            "last_success_age_seconds": 1.0,
+            "last_error_at": None,
+            "last_error": None,
+        }
+
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value=scheduler,
+        ):
+            result = self.endpoint("/health")()
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["version"], APP_VERSION)
+        self.assertEqual(result["scheduler"], scheduler)
         parsed = datetime.fromisoformat(result["time"])
         self.assertIsNotNone(parsed.tzinfo)
+
+    def test_health_degrades_when_scheduler_heartbeat_is_unhealthy(self):
+        scheduler = {
+            "status": "stale",
+            "healthy": False,
+            "max_age_seconds": 60,
+            "started_at": 100.0,
+            "last_success_at": 120.0,
+            "last_success_age_seconds": 90.0,
+            "last_error_at": 130.0,
+            "last_error": "unable to open database file",
+        }
+
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value=scheduler,
+        ):
+            result = self.endpoint("/health")()
+
+        self.assertEqual(result["status"], "degraded")
+        self.assertFalse(result["scheduler"]["healthy"])
+        self.assertEqual(
+            result["scheduler"]["last_error"],
+            "unable to open database file",
+        )
 
     def test_status_delegates_to_existing_read_models(self):
         rows = [{"id": 1, "ip": "192.0.2.10"}]

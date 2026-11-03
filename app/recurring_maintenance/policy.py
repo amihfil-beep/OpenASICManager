@@ -222,6 +222,62 @@ def next_occurrence(rule, now):
     return None
 
 
+def occurrences_between(rule, starts_at, ends_before):
+    """Return recurring occurrences whose local start is in a bounded range."""
+
+    if starts_at.tzinfo is None or ends_before.tzinfo is None:
+        raise ValueError("occurrence range must be timezone-aware")
+
+    local_start = starts_at.astimezone(TIMEZONE)
+    local_end = ends_before.astimezone(TIMEZONE)
+
+    if local_end <= local_start:
+        return []
+
+    duration = timedelta(
+        minutes=int(rule["duration_minutes"])
+    )
+
+    day_count = (
+        local_end.date()
+        - local_start.date()
+    ).days + 1
+
+    results = []
+
+    for day_offset in range(day_count):
+        local_date = (
+            local_start.date()
+            + timedelta(days=day_offset)
+        )
+
+        if not _weekday_selected(
+            rule,
+            local_date.weekday(),
+        ):
+            continue
+
+        occurrence_start = _local_start(
+            rule,
+            local_date,
+        )
+
+        if not (
+            local_start
+            <= occurrence_start
+            < local_end
+        ):
+            continue
+
+        results.append((
+            occurrence_start,
+            occurrence_start + duration,
+        ))
+
+    results.sort(key=lambda item: item[0])
+    return results
+
+
 __all__ = (
     "TIMEZONE_NAME",
     "TIMEZONE",
@@ -230,5 +286,6 @@ __all__ = (
     "normalize_recurring_rule",
     "active_occurrences",
     "next_occurrence",
+    "occurrences_between",
     "occurrence_key",
 )

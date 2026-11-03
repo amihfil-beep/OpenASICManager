@@ -13,7 +13,7 @@ class AppCompositionTests(unittest.TestCase):
     def test_app_keeps_only_composition_level_functions(self):
         functions = {
             node.name
-            for node in cls.tree.body
+            for node in self.tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         self.assertEqual(functions, {

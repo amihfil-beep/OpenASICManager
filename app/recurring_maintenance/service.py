@@ -203,8 +203,6 @@ def materialize_due_occurrences(now=None, errors=None):
 
 
 def _event_message(item):
-    action = item["action"]
-
     labels = {
         "MAINTENANCE_RECURRING_START": "started",
         "MAINTENANCE_RECURRING_COMPLETE": "completed",
@@ -215,8 +213,15 @@ def _event_message(item):
         "Recurring maintenance rule "
         f"#{item['rule_id']} window "
         f"#{item['window_id']} "
-        f"{labels[action]}"
+        f"{labels[item['action']]}"
     )
+
+
+def _notification_action(item):
+    if item["action"] == "MAINTENANCE_RECURRING_START":
+        return "MAINTENANCE_CREATE"
+
+    return "MAINTENANCE_END"
 
 
 def recurring_maintenance_iteration(runtime, now=None):
@@ -257,7 +262,7 @@ def recurring_maintenance_iteration(runtime, now=None):
 
             runtime.log_event(
                 source="SCHEDULER",
-                action=item["action"],
+                action=_notification_action(item),
                 miner=miner,
                 success=True,
                 message=_event_message(item),

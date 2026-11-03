@@ -6,16 +6,14 @@ import threading
 import time
 
 from db import get_miner
-from recurring_maintenance.lifecycle_repository import (
-    claim_lifecycle_events,
-    ensure_lifecycle_schema,
-)
 from recurring_maintenance.policy import (
     TIMEZONE,
     occurrence_key,
     occurrences_between,
 )
 from recurring_maintenance.repository import (
+    claim_lifecycle_events,
+    ensure_lifecycle_schema,
     list_enabled_recurring_rules,
     materialize_occurrence,
 )

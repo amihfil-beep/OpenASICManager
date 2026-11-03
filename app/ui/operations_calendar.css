@@ -1,0 +1,133 @@
+/* Operations calendar UI. */
+
+.operations-calendar-modal {
+    max-width: 1320px;
+}
+
+.operations-calendar-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.operations-calendar-control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.operations-calendar-control label {
+    color: #9299a8;
+    font-size: 11px;
+}
+
+.operations-calendar-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 14px 0 18px;
+}
+
+.operations-calendar-summary-card {
+    border: 1px solid #2b303b;
+    border-radius: 9px;
+    padding: 11px;
+    background: #111318;
+}
+
+.operations-calendar-summary-value {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.operations-calendar-section {
+    margin-top: 18px;
+}
+
+.operations-calendar-section h3 {
+    margin-bottom: 8px;
+}
+
+.operations-calendar-table {
+    min-width: 900px;
+}
+
+.operations-calendar-source {
+    display: inline-block;
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.operations-calendar-source-one-off {
+    background: rgba(103, 183, 255, .14);
+    color: #67b7ff;
+}
+
+.operations-calendar-source-recurring {
+    background: rgba(79, 211, 138, .14);
+    color: #4fd38a;
+}
+
+.operations-calendar-membership {
+    color: #9299a8;
+    font-size: 10px;
+    margin-top: 3px;
+}
+
+.operations-calendar-note {
+    max-width: 320px;
+    white-space: normal;
+}
+
+.operations-calendar-status-active {
+    color: #f1c75b;
+    font-weight: 800;
+}
+
+.operations-calendar-status-scheduled {
+    color: #67b7ff;
+    font-weight: 800;
+}
+
+.operations-calendar-status-ended,
+.operations-calendar-status-expired {
+    color: #9299a8;
+    font-weight: 700;
+}
+
+.operations-calendar-empty {
+    padding: 16px;
+    color: #9299a8;
+    text-align: center;
+}
+
+.operations-upcoming-mini {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 2px 5px;
+    border-radius: 5px;
+    background: rgba(103, 183, 255, .14);
+    color: #67b7ff;
+    font-size: 9px;
+    font-weight: 800;
+    vertical-align: middle;
+}
+
+@media (max-width: 760px) {
+    .operations-calendar-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .operations-calendar-controls {
+        align-items: stretch;
+    }
+
+    .operations-calendar-control {
+        width: 100%;
+    }
+}

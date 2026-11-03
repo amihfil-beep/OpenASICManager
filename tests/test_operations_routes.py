@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from api.operations import create_operations_router
 
 
@@ -24,6 +26,7 @@ class OperationsRoutesTests(unittest.TestCase):
             "/api/logs",
             "/api/control/jobs",
             "/api/issues",
+            "/api/maintenance/calendar",
         })
 
     @patch("api.operations.action_log_entries")
@@ -51,6 +54,66 @@ class OperationsRoutesTests(unittest.TestCase):
         endpoint = self.endpoint("/api/issues", "GET")
         self.assertEqual(endpoint(0), [])
         report.assert_called_once_with(1)
+
+    @patch("api.operations.operations_calendar_report")
+    def test_calendar_delegates_filters_to_read_model(self, report):
+        report.return_value = {
+            "active": [],
+            "upcoming": [],
+            "recent": [],
+        }
+
+        endpoint = self.endpoint(
+            "/api/maintenance/calendar",
+            "GET",
+        )
+
+        result = endpoint(
+            "GROUP",
+            12,
+            30,
+            14,
+            250,
+        )
+
+        report.assert_called_once_with(
+            scope="GROUP",
+            miner_id=12,
+            upcoming_days=30,
+            recent_days=14,
+            limit=250,
+        )
+        self.assertEqual(
+            result,
+            report.return_value,
+        )
+
+    @patch("api.operations.operations_calendar_report")
+    def test_calendar_validation_error_becomes_http_400(self, report):
+        report.side_effect = ValueError("scope must be valid")
+
+        endpoint = self.endpoint(
+            "/api/maintenance/calendar",
+            "GET",
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            endpoint(
+                "INVALID",
+                None,
+                14,
+                7,
+                200,
+            )
+
+        self.assertEqual(
+            ctx.exception.status_code,
+            400,
+        )
+        self.assertEqual(
+            ctx.exception.detail,
+            "scope must be valid",
+        )
 
 
 if __name__ == "__main__":

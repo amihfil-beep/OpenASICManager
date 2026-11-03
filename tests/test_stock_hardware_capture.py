@@ -73,6 +73,19 @@ class StockHardwareCaptureTests(unittest.TestCase):
         )
         self.assertEqual(result["User"], "fixture.worker")
 
+    def test_embedded_ip_and_device_identifiers_are_redacted(self):
+        result = capture.sanitize_value({
+            "minertype": "Antminer S21 10.1.2.3",
+            "system_filesystem_version": "2026-11-03 10.1.2.3",
+            "chip_id": 481927362,
+            "10.1.2.3": "internal",
+        })
+        flat = json.dumps(result)
+        self.assertNotIn("10.1.2.3", flat)
+        self.assertNotIn("481927362", flat)
+        self.assertEqual(result["minertype"], "REDACTED")
+        self.assertEqual(result["chip_id"], 0)
+
     def test_collect_calls_only_allowlisted_read_commands(self):
         with patch.object(
             capture, "read_cgminer", return_value={"SUMMARY": []}

@@ -1,6 +1,6 @@
 """OpenASICManager release version."""
 
-APP_VERSION = "0.8.3"
+APP_VERSION = "0.9.0"
 
 
 __all__ = (

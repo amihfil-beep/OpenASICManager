@@ -13,7 +13,7 @@ class AppCompositionTests(unittest.TestCase):
     def test_app_keeps_only_composition_level_functions(self):
         functions = {
             node.name
-            for node in self.tree.body
+            for node in cls.tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         self.assertEqual(functions, {
@@ -65,6 +65,7 @@ class AppCompositionTests(unittest.TestCase):
             "create_operations_router",
             "create_issue_router",
             "create_maintenance_router",
+            "create_recurring_maintenance_router",
             "create_service_history_router",
             "create_miner_group_router",
             "create_discovery_router",

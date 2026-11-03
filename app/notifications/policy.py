@@ -53,15 +53,6 @@ CURRENT_TELEGRAM_ACTION_POLICY = {
 
     "MAINTENANCE_END":
         "maintenance",
-
-    "MAINTENANCE_RECURRING_START":
-        "maintenance",
-
-    "MAINTENANCE_RECURRING_COMPLETE":
-        "maintenance",
-
-    "MAINTENANCE_RECURRING_CANCEL":
-        "maintenance",
 }
 
 

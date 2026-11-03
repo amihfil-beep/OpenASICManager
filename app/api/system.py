@@ -11,6 +11,9 @@ from db import get_setting
 from fastapi import APIRouter
 from inventory.analytics import miner_status_items
 from inventory.repository import list_miners
+from recurring_maintenance.service import (
+    materializer_health_snapshot,
+)
 from scheduler.repository import (
     desired_state,
     next_transition,
@@ -32,11 +35,17 @@ def create_system_router():
     @router.get("/health")
     def health():
         scheduler = scheduler_health_snapshot()
+        maintenance = materializer_health_snapshot()
+
+        healthy = bool(
+            scheduler["healthy"]
+            and maintenance["healthy"]
+        )
 
         return {
             "status": (
                 "ok"
-                if scheduler["healthy"]
+                if healthy
                 else "degraded"
             ),
             "version": APP_VERSION,
@@ -45,6 +54,7 @@ def create_system_router():
                     MOSCOW
                 ).isoformat(),
             "scheduler": scheduler,
+            "recurring_maintenance": maintenance,
         }
 
 
@@ -88,7 +98,8 @@ def create_system_router():
                 latest_service.get(
                     int(
                         miner["id"]
-                    )
+                    ),
+                    {},
                 )
             )
 

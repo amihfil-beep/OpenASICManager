@@ -12,14 +12,12 @@ from maintenance_windows.repository import end_maintenance_window
 from notifications.policy import notification_delivery_allowed
 from recurring_maintenance import lifecycle, policy, service
 from recurring_maintenance.lifecycle import occurrence_history_item
-from recurring_maintenance.lifecycle_repository import (
-    claim_lifecycle_events,
-    list_occurrence_history,
-)
 from recurring_maintenance.policy import normalize_recurring_rule
 from recurring_maintenance.repository import (
+    claim_lifecycle_events,
     create_recurring_rule,
     ensure_recurring_schema,
+    list_occurrence_history,
 )
 from recurring_maintenance.service import (
     MaterializerHealthState,

@@ -30,13 +30,14 @@ CAPTURE_DIR = Path.home() / "openasicmanager-hardware-fixtures"
 SENSITIVE_KEY = re.compile(
     r"pass|pwd|token|secret|cookie|auth|session|wallet|worker|"
     r"username|userid|user|url|endpoint|hostname|host|ip|"
-    r"mac|serial|address|stratum",
+    r"mac|serial|address|stratum|uuid|guid|chip_id|deviceid|uid|imei|boardid",
     re.IGNORECASE,
 )
 SAFE_MODEL = re.compile(r"^[A-Za-z0-9 _().+-]{1,80}$")
 SAFE_VERSION = re.compile(r"^[A-Za-z0-9 _().:+/-]{1,80}$")
 NUMERIC_TEXT = re.compile(r"^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$")
 SAFE_ID = re.compile(r"^(?:BTM_SOC[0-9]+|ASC[0-9]+)$", re.IGNORECASE)
+IPV4_TEXT = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 SAFE_POOL_STATUS = {
     "Alive", "Disabled", "Dead", "Rejecting", "Unknown",
     "alive", "disabled", "dead", "rejecting", "unknown",
@@ -64,7 +65,11 @@ def sanitize_value(value, field=""):
         clean = {}
         for key, item in value.items():
             key_text = str(key)
-            if len(key_text) > 100 or re.search(r"[@/\\]", key_text):
+            if (
+                len(key_text) > 100
+                or re.search(r"[@/\\]", key_text)
+                or IPV4_TEXT.search(key_text)
+            ):
                 key_text = "REDACTED_FIELD"
             clean[key_text] = sanitize_value(item, key_text)
         return clean
@@ -104,14 +109,18 @@ def sanitize_value(value, field=""):
         return value
 
     if lower in {"type", "minertype", "miner_type"}:
-        return value if SAFE_MODEL.fullmatch(value) else "REDACTED"
+        return (
+            value if SAFE_MODEL.fullmatch(value)
+            and not IPV4_TEXT.search(value)
+            else "REDACTED"
+        )
 
     if lower in {
         "cgminer", "version", "system_filesystem_version",
         "miner_version", "firmware_version", "bmminer",
     } and SAFE_VERSION.fullmatch(value):
         # Do not allow an IP-like version to become a covert host leak.
-        if re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", value):
+        if IPV4_TEXT.search(value):
             return "REDACTED"
         return value
 

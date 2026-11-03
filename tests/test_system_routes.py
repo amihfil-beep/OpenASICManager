@@ -40,16 +40,36 @@ class SystemRoutesTests(unittest.TestCase):
             "last_error_at": None,
             "last_error": None,
         }
+        maintenance = {
+            "status": "ok",
+            "healthy": True,
+            "max_age_seconds": 90,
+            "started_at": 100.0,
+            "last_success_at": 121.0,
+            "last_success_age_seconds": 1.0,
+            "last_error_at": None,
+            "last_error": None,
+            "last_materialized_count": 0,
+            "last_lifecycle_event_count": 0,
+            "catchup_days": 7,
+        }
 
         with patch(
             "api.system.scheduler_health_snapshot",
             return_value=scheduler,
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value=maintenance,
         ):
             result = self.endpoint("/health")()
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["version"], APP_VERSION)
         self.assertEqual(result["scheduler"], scheduler)
+        self.assertEqual(
+            result["recurring_maintenance"],
+            maintenance,
+        )
         parsed = datetime.fromisoformat(result["time"])
         self.assertIsNotNone(parsed.tzinfo)
 
@@ -64,10 +84,17 @@ class SystemRoutesTests(unittest.TestCase):
             "last_error_at": 130.0,
             "last_error": "unable to open database file",
         }
+        maintenance = {
+            "status": "ok",
+            "healthy": True,
+        }
 
         with patch(
             "api.system.scheduler_health_snapshot",
             return_value=scheduler,
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value=maintenance,
         ):
             result = self.endpoint("/health")()
 
@@ -76,6 +103,35 @@ class SystemRoutesTests(unittest.TestCase):
         self.assertEqual(
             result["scheduler"]["last_error"],
             "unable to open database file",
+        )
+
+    def test_health_degrades_when_maintenance_heartbeat_is_unhealthy(self):
+        scheduler = {
+            "status": "ok",
+            "healthy": True,
+        }
+        maintenance = {
+            "status": "stale",
+            "healthy": False,
+            "last_error": "materializer database error",
+        }
+
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value=scheduler,
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value=maintenance,
+        ):
+            result = self.endpoint("/health")()
+
+        self.assertEqual(result["status"], "degraded")
+        self.assertFalse(
+            result["recurring_maintenance"]["healthy"]
+        )
+        self.assertEqual(
+            result["recurring_maintenance"]["last_error"],
+            "materializer database error",
         )
 
     def test_status_delegates_to_existing_read_models(self):

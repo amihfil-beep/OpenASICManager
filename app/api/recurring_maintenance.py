@@ -10,6 +10,9 @@ from fastapi import (
 )
 
 from audit.identity import current_audit_actor
+from recurring_maintenance.lifecycle import (
+    occurrence_history_item,
+)
 from recurring_maintenance.policy import (
     TIMEZONE,
     TIMEZONE_NAME,
@@ -21,8 +24,12 @@ from recurring_maintenance.repository import (
     create_recurring_rule,
     delete_recurring_rule,
     get_recurring_rule,
+    list_occurrence_history,
     list_recurring_rules,
     update_recurring_rule,
+)
+from recurring_maintenance.service import (
+    materializer_health_snapshot,
 )
 
 
@@ -87,6 +94,35 @@ def create_recurring_maintenance_router(log_event):
             "rules": [
                 _rule_dict(row, now)
                 for row in list_recurring_rules()
+            ],
+            "materializer": materializer_health_snapshot(),
+        }
+
+    @router.get("/api/maintenance/recurring/history")
+    def api_recurring_history(
+        limit: int = 200,
+    ):
+        limit = max(
+            1,
+            min(int(limit), 500),
+        )
+        now = int(time.time())
+
+        return {
+            "timezone": TIMEZONE_NAME,
+            "now": datetime.fromtimestamp(
+                now,
+                TIMEZONE,
+            ).isoformat(),
+            "materializer": materializer_health_snapshot(),
+            "occurrences": [
+                occurrence_history_item(
+                    row,
+                    now,
+                )
+                for row in list_occurrence_history(
+                    limit
+                )
             ],
         }
 

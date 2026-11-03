@@ -2,13 +2,16 @@
 
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 import config as app_config
 from audit.service import action_log_entries
 from control.repository import list_control_jobs
 from control.analytics import control_job_items
 from anomalies.analytics import issue_report
+from operations_calendar.read_model import (
+    operations_calendar_report,
+)
 
 
 MOSCOW = ZoneInfo(app_config.TIMEZONE)
@@ -67,6 +70,32 @@ def create_operations_router():
             min(int(limit), 500),
         )
         return issue_report(limit)
+
+
+    @router.get(
+        "/api/maintenance/calendar"
+    )
+    def api_maintenance_calendar(
+        scope: str = "ALL",
+        miner_id: int = None,
+        upcoming_days: int = 14,
+        recent_days: int = 7,
+        limit: int = 200,
+    ):
+        try:
+            return operations_calendar_report(
+                scope=scope,
+                miner_id=miner_id,
+                upcoming_days=upcoming_days,
+                recent_days=recent_days,
+                limit=limit,
+            )
+
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
 
 
     return router

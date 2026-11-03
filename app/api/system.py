@@ -98,8 +98,7 @@ def create_system_router():
                 latest_service.get(
                     int(
                         miner["id"]
-                    ),
-                    {},
+                    )
                 )
             )
 

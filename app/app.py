@@ -22,6 +22,9 @@ from api.maintenance import create_maintenance_router
 from api.miner_groups import create_miner_group_router
 from api.notifications import create_notifications_router
 from api.operations import create_operations_router
+from api.recurring_maintenance import (
+    create_recurring_maintenance_router,
+)
 from api.remote_web import create_remote_web_router
 from api.scheduler import create_scheduler_router
 from api.service_history import create_service_history_router
@@ -39,6 +42,7 @@ from control.worker import ControlRuntime
 from db import init_db
 from monitoring.service import MonitoringRuntime
 from notifications.telegram import TelegramRuntime, telegram_event_async
+from recurring_maintenance.service import RecurringMaintenanceRuntime
 from scheduler.repository import (
     effective_schedule_states,
     next_transition_for_miner,
@@ -103,6 +107,12 @@ scheduler_loop = partial(
     scheduler_runtime,
 )
 
+recurring_maintenance_runtime = RecurringMaintenanceRuntime(
+    log_event=log_event,
+    stop_event=stop_event,
+)
+recurring_maintenance_loop = recurring_maintenance_runtime.run
+
 anomaly_runtime = AnomalyRuntime(
     log_event=log_event,
     stop_event=stop_event,
@@ -128,6 +138,11 @@ async def lifespan(app):
         name="asic-scheduler",
         daemon=True,
     )
+    recurring_maintenance_thread = threading.Thread(
+        target=recurring_maintenance_loop,
+        name="maintenance-recurring",
+        daemon=True,
+    )
     telemetry_thread = threading.Thread(
         target=telemetry_loop,
         name="asic-telemetry",
@@ -141,6 +156,7 @@ async def lifespan(app):
 
     poll_thread.start()
     schedule_thread.start()
+    recurring_maintenance_thread.start()
     telemetry_thread.start()
     anomaly_thread.start()
 
@@ -188,6 +204,11 @@ app.include_router(
 )
 app.include_router(
     create_maintenance_router(
+        log_event
+    )
+)
+app.include_router(
+    create_recurring_maintenance_router(
         log_event
     )
 )

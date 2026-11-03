@@ -13,9 +13,6 @@ from audit.identity import current_audit_actor
 from recurring_maintenance.lifecycle import (
     occurrence_history_item,
 )
-from recurring_maintenance.lifecycle_repository import (
-    list_occurrence_history,
-)
 from recurring_maintenance.policy import (
     TIMEZONE,
     TIMEZONE_NAME,
@@ -27,6 +24,7 @@ from recurring_maintenance.repository import (
     create_recurring_rule,
     delete_recurring_rule,
     get_recurring_rule,
+    list_occurrence_history,
     list_recurring_rules,
     update_recurring_rule,
 )

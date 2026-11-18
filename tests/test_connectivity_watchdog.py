@@ -15,6 +15,7 @@ from monitoring.connectivity import (
     classify_fleet,
     classify_incident,
     idle_state,
+    suppress_individual_offline,
 )
 from monitoring.fleet import read_fleet_snapshot
 
@@ -116,6 +117,35 @@ class FleetClassificationTests(unittest.TestCase):
             ),
             "DATABASE_UNAVAILABLE",
         )
+
+    def test_offline_suppression_only_after_confirmed_aggregate_delivery(self):
+        records = [
+            {
+                "enabled": 1,
+                "driver": "bitmain_stock",
+                "last_state": "OFFLINE",
+            }
+            for _ in range(30)
+        ]
+        alert = {
+            "phase": "active",
+            "alert_sent": True,
+            "reason": "VPN_SERVICE_UNAVAILABLE",
+        }
+        self.assertTrue(suppress_individual_offline(records, alert))
+        for changed in (
+            {"alert_sent": False},
+            {"phase": "idle"},
+            {"reason": "DATABASE_UNAVAILABLE"},
+        ):
+            with self.subTest(changed=changed):
+                self.assertFalse(
+                    suppress_individual_offline(records, {**alert, **changed})
+                )
+        records[0]["last_state"] = "PAUSED"
+        for miner in records[1:]:
+            miner["last_state"] = "PAUSED"
+        self.assertFalse(suppress_individual_offline(records, alert))
 
     def test_empty_farm_not_mass_alarm(self):
         snap = classify_fleet([], now=100)

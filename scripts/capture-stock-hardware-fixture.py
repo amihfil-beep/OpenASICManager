@@ -20,6 +20,11 @@ from requests.auth import HTTPDigestAuth
 
 
 CGMINER_COMMANDS = ("version", "summary", "stats", "pools", "devs")
+HTTP_READ_PATHS = (
+    "/cgi-bin/get_system_info.cgi",
+    "/cgi-bin/summary.cgi",
+    "/cgi-bin/stats.cgi",
+)
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(item)
@@ -30,7 +35,7 @@ CAPTURE_DIR = Path.home() / "openasicmanager-hardware-fixtures"
 SENSITIVE_KEY = re.compile(
     r"pass|pwd|token|secret|cookie|auth|session|wallet|worker|"
     r"username|userid|user|url|endpoint|hostname|host|ip|"
-    r"mac|serial|address|stratum|uuid|guid|chip_id|deviceid|uid|imei|boardid",
+    r"mac|serial|(?:^sn$)|address|stratum|uuid|guid|chip_id|deviceid|uid|imei|boardid",
     re.IGNORECASE,
 )
 SAFE_MODEL = re.compile(r"^[A-Za-z0-9 _().+-]{1,80}$")
@@ -81,6 +86,10 @@ def sanitize_value(value, field=""):
         return value
 
     if isinstance(value, (int, float)):
+        # "chip" includes the letters "ip". These temperature arrays
+        # contain readings, not device IP addresses or identifiers.
+        if lower in {"temp_chip", "temp_pic", "temp_pcb"}:
+            return value
         # Numeric serials / identity values must not be retained.
         return 0 if SENSITIVE_KEY.search(name) else value
 
@@ -166,10 +175,14 @@ def read_cgminer(host, command):
     return result
 
 
-def _http_get(session, host, auth=None):
-    # Deliberately do not allow arbitrary paths, redirects or proxy settings.
+def _http_get(
+    session, host, auth=None, path="/cgi-bin/get_system_info.cgi"
+):
+    # Never allow a caller-supplied URL or a state-changing CGI route.
+    if path not in HTTP_READ_PATHS:
+        raise ValueError("CGI path is not on the read-only allowlist")
     return session.get(
-        "http://" + host + "/cgi-bin/get_system_info.cgi",
+        "http://" + host + path,
         auth=auth,
         timeout=6,
         allow_redirects=False,
@@ -177,9 +190,13 @@ def _http_get(session, host, auth=None):
     )
 
 
-def capture_system_info(host, username, password):
+def capture_system_info(
+    host, username, password, path="/cgi-bin/get_system_info.cgi"
+):
+    if path not in HTTP_READ_PATHS:
+        raise ValueError("CGI path is not on the read-only allowlist")
     result = {
-        "path": "/cgi-bin/get_system_info.cgi",
+        "path": path,
         "method": "GET",
         "unauthenticated_status": None,
         "authenticated_status": None,
@@ -190,7 +207,7 @@ def capture_system_info(host, username, password):
     session.trust_env = False
     try:
         try:
-            response = _http_get(session, host)
+            response = _http_get(session, host, path=path)
             result["unauthenticated_status"] = response.status_code
             challenge = response.headers.get("WWW-Authenticate", "")
             scheme = challenge.split(None, 1)[0].strip().lower()
@@ -207,7 +224,7 @@ def capture_system_info(host, username, password):
         if password:
             try:
                 response = _http_get(
-                    session, host, HTTPDigestAuth(username, password)
+                    session, host, HTTPDigestAuth(username, password), path=path
                 )
                 result["authenticated_status"] = response.status_code
                 if response.status_code == 200:
@@ -234,6 +251,7 @@ def collect_fixture(host, model, username, password):
         "host_redacted": True,
         "cgminer": {},
         "http_system_info": None,
+        "http_cgi_diagnostics": {},
         "deferred_state_changing_probes": (
             "miner-mode writes, reboot method/status, PAUSE, RESUME, REBOOT"
         ),
@@ -253,6 +271,10 @@ def collect_fixture(host, model, username, password):
     fixture["http_system_info"] = capture_system_info(
         validated_host, username, password
     )
+    for path in HTTP_READ_PATHS[1:]:
+        fixture["http_cgi_diagnostics"][path] = capture_system_info(
+            validated_host, username, password, path=path
+        )
     return fixture
 
 
@@ -286,7 +308,7 @@ def main():
     parser.add_argument("--model", required=True, choices=("S21", "S21-Pro"))
     args = parser.parse_args()
 
-    print("READ-ONLY capture: CGMiner and get_system_info.cgi only.")
+    print("READ-ONLY capture: CGMiner + allowlisted GET CGI endpoints.")
     print("No ASIC control actions will be sent.")
     try:
         host = validate_target(input("Miner private IPv4: "))
@@ -317,6 +339,8 @@ def main():
         "System info HTTP status:",
         fixture["http_system_info"]["authenticated_status"],
     )
+    for path, result in fixture["http_cgi_diagnostics"].items():
+        print("HTTP GET", path, "status=", result["authenticated_status"])
     print("No raw responses, host IP or credentials saved.")
     return 0
 

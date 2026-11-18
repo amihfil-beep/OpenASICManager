@@ -35,7 +35,10 @@ The only network operations are:
 
 - CGMiner TCP/4028 commands: version, summary, stats, pools, devs;
 - HTTP GET /cgi-bin/get_system_info.cgi: anonymous status, auth
-  challenge scheme and response with explicitly supplied credentials.
+  challenge scheme and response with explicitly supplied credentials;
+- HTTP GET /cgi-bin/summary.cgi and /cgi-bin/stats.cgi: additional
+  read-only CGI telemetry contracts documented by BITMAIN; unsupported
+  endpoints are recorded as unavailable instead of guessed.
 
 The helper never calls set_miner_conf.cgi, reboot.cgi, POST endpoints,
 or HEAD on reboot routes. On some servers HEAD might execute the GET
@@ -79,3 +82,30 @@ captures for both real S21 and S21 Pro stock firmware are available,
 with the exact observed firmware builds. Issue #102 then adds
 fixture-driven telemetry and discovery validation. Full support still
 requires controlled action and Remote Web validation under issue #103.
+
+## 0.10.0 read-only compatibility investigation
+
+BITMAIN's public CGI documentation includes a system-info example
+without a `minertype` field, a summary example with `rate_5s` and
+`rate_avg`, and a stats example with `watt`, `miner-mode`, and nested
+`chain[].temp_chip` measurements. These are documented **API format
+examples**, not confirmed snapshots of the user's S21 or S21 Pro.
+
+Relevant vendor documentation:
+- https://docs.bitmain.com/en/antminer/CONTENTS.html
+- https://www.awesomeminer.com/antminerfirmware
+
+The capture tool now records read-only CGI endpoints in
+`http_cgi_diagnostics` while preserving existing `cgminer` and
+`http_system_info` fields. The sanitized output is **not evidence of
+support** until the device's model and firmware build are confirmed.
+
+Before integration, capture one actual S21 and one actual S21 Pro on
+their existing firmware, inspect both JSON files for unexpected
+sensitive data, and establish the exact parsing and control contract.
+No state-changing requests are included in the capture.
+
+Do not infer S21/S21 Pro identity solely from a firmware filename:
+`S21`, `S21 Pro`, `S21 XP`, `S21+`, Hydro, and Immersion must not be
+silently conflated. The application only recognizes explicit model
+fields in this development stage.

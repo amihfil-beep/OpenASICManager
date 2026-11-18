@@ -20,6 +20,8 @@ from scheduler.repository import (
     effective_schedule_states,
 )
 from scheduler.supervisor import scheduler_health_snapshot
+from monitoring.service import monitoring_health_snapshot
+from monitoring.resources import file_descriptor_health_snapshot
 from service_history.repository import (
     latest_service_records_by_miner,
 )
@@ -36,10 +38,14 @@ def create_system_router():
     def health():
         scheduler = scheduler_health_snapshot()
         maintenance = materializer_health_snapshot()
+        monitoring = monitoring_health_snapshot()
+        descriptors = file_descriptor_health_snapshot()
 
         healthy = bool(
             scheduler["healthy"]
             and maintenance["healthy"]
+            and monitoring["healthy"]
+            and descriptors["healthy"]
         )
 
         return {
@@ -55,6 +61,8 @@ def create_system_router():
                 ).isoformat(),
             "scheduler": scheduler,
             "recurring_maintenance": maintenance,
+            "monitoring": monitoring,
+            "file_descriptors": descriptors,
         }
 
 

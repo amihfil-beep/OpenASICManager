@@ -1,7 +1,10 @@
 """Background anomaly detection service."""
 
+import logging
 import time
 from datetime import datetime
+
+LOGGER = logging.getLogger(__name__)
 
 from scheduler.policy import MOSCOW
 
@@ -326,35 +329,42 @@ def anomaly_scan(
 
 
 def anomaly_loop(runtime):
-    anomaly_policy = load_anomaly_policy()
-
-    if runtime.stop_event.wait(
-        anomaly_policy["interval_seconds"]
-    ):
-        return
+    """Retry database failures without losing anomaly monitoring."""
+    initial_delay_pending = True
 
     while not runtime.stop_event.is_set():
+        retry_seconds = 30
         try:
             anomaly_policy = load_anomaly_policy()
+            retry_seconds = anomaly_policy["interval_seconds"]
+
+            if initial_delay_pending:
+                initial_delay_pending = False
+                if runtime.stop_event.wait(retry_seconds):
+                    return
+
             anomaly_scan(
                 runtime,
                 anomaly_policy=anomaly_policy,
             )
         except Exception as exc:
-            runtime.log_event(
-                source="SYSTEM",
-                action="ANOMALY_ERROR",
-                success=False,
-                message=(
-                    f"{type(exc).__name__}: "
-                    f"{exc}"
-                ),
+            LOGGER.exception(
+                "Anomaly iteration failed; retrying in %s seconds",
+                retry_seconds,
             )
+            try:
+                runtime.log_event(
+                    source="SYSTEM",
+                    action="ANOMALY_ERROR",
+                    success=False,
+                    message=f"{type(exc).__name__}: {exc}",
+                )
+            except Exception:
+                # The audit log also depends on SQLite. Its failure
+                # must not kill the anomaly monitoring thread.
+                LOGGER.exception("Unable to persist anomaly error")
 
-        anomaly_policy = load_anomaly_policy()
-        if runtime.stop_event.wait(
-            anomaly_policy["interval_seconds"]
-        ):
+        if runtime.stop_event.wait(retry_seconds):
             return
 
 

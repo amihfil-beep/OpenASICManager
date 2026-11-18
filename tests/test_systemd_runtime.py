@@ -20,6 +20,10 @@ class SystemdRuntimeTests(unittest.TestCase):
             unit,
         )
 
+    def test_main_service_raises_soft_fd_limit(self):
+        unit = SERVICE_PATH.read_text(encoding="utf-8")
+        self.assertIn("LimitNOFILE=65535:65535", unit)
+
 
 if __name__ == "__main__":
     unittest.main()

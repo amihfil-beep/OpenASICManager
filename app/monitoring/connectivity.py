@@ -79,6 +79,38 @@ def classify_incident(
     return None
 
 
+def suppress_individual_offline(rows, alarm_state):
+    """Avoid 30 duplicate Telegram issues only after aggregate alert sent.
+
+    If watchdog delivery was unavailable, preserve the existing per-miner
+    incident path. Do not suppress any other issue category.
+    """
+    if not isinstance(alarm_state, dict):
+        return False
+    if not (
+        alarm_state.get("phase") == "active"
+        and alarm_state.get("alert_sent") is True
+        and alarm_state.get("reason") in {
+            "VPN_SERVICE_UNAVAILABLE",
+            "VPN_ROUTE_UNAVAILABLE",
+            "FARM_MASS_UNAVAILABLE",
+        }
+    ):
+        return False
+    enabled = [
+        row for row in rows
+        if bool(row["enabled"]) and row["driver"] != "unset"
+    ]
+    threshold = max(
+        MASS_OUTAGE_MIN_MINERS,
+        ceil(len(enabled) * MASS_OUTAGE_FRACTION),
+    )
+    offline = sum(
+        1 for row in enabled if row["last_state"] == "OFFLINE"
+    )
+    return len(enabled) >= MASS_OUTAGE_MIN_MINERS and offline >= threshold
+
+
 def idle_state():
     return {
         "phase": "idle",
@@ -132,6 +164,7 @@ def advance_alarm(
 
 __all__ = (
     "classify_fleet", "classify_incident", "idle_state",
+    "suppress_individual_offline",
     "advance_alarm", "FRESH_SECONDS", "OUTAGE_GRACE_SECONDS",
     "RECOVERY_GRACE_SECONDS", "MASS_OUTAGE_FRACTION",
     "MASS_OUTAGE_MIN_MINERS",

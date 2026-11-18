@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely inspect an already sanitized S21/S21 Pro fixture offline.
+"""Safely inspect an already sanitized T21/S21/S21 Pro fixture offline.
 
 No network, database, miner control, or firmware operations are used.
 Only aggregate numeric metrics and fixed-status labels are printed.
@@ -20,6 +20,7 @@ from drivers.bitmain_models import stock_model_from_responses
 
 
 EXPECTED = {
+    "T21": "Antminer T21",
     "S21": "Antminer S21",
     "S21-Pro": "Antminer S21 Pro",
 }
@@ -87,7 +88,7 @@ def analyze_fixture(fixture):
 
     expected = fixture.get("expected_model")
     if expected not in EXPECTED:
-        raise ValueError("Fixture model must be S21 or S21-Pro")
+        raise ValueError("Fixture model must be T21, S21 or S21-Pro")
 
     cgi_summary = _captured_cgi(fixture, "/cgi-bin/summary.cgi")
     cgi_stats = _captured_cgi(fixture, "/cgi-bin/stats.cgi")

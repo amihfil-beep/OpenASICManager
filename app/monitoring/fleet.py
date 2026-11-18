@@ -4,11 +4,8 @@ Never starts ASIC network requests, changes miner state, or writes the
 production database. PAUSED counts as available when telemetry is fresh.
 """
 
-import sqlite3
-import time
-from pathlib import Path
-
-import config as app_config
+ import time
+ from monitoring.repository import read_fleet_health_rows
 from monitoring.connectivity import (
     MASS_OUTAGE_FRACTION,
     MASS_OUTAGE_MIN_MINERS,
@@ -19,26 +16,7 @@ from monitoring.connectivity import (
 
 def read_fleet_snapshot(now=None):
     when = time.time() if now is None else float(now)
-    path = Path(app_config.DATABASE_PATH).resolve()
-    conn = sqlite3.connect(
-        path.as_uri() + "?mode=ro",
-        uri=True,
-        timeout=3,
-    )
-    try:
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA query_only=ON")
-        rows = conn.execute(
-            """
-            SELECT last_state, last_seen
-            FROM miners
-            WHERE enabled=1
-              AND driver!='unset'
-            """
-        ).fetchall()
-    finally:
-        conn.close()
-
+    rows = read_fleet_health_rows()
     result = classify_fleet(rows, when)
     result["mass_outage"] = bool(
         classify_incident(

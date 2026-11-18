@@ -24,6 +24,9 @@ ExecStart=/opt/openasicmanager/venv/bin/python \
 Restart=on-failure
 RestartSec=5
 
+# Explicitly raise the soft/hard FD limits (previous soft limit was 1024).
+LimitNOFILE=65535:65535
+
 UMask=0077
 
 NoNewPrivileges=true

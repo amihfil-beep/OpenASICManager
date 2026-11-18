@@ -100,10 +100,73 @@ class StockHardwareCaptureTests(unittest.TestCase):
             [call.args[1] for call in cg.call_args_list],
             list(capture.CGMINER_COMMANDS),
         )
-        self.assertEqual(len(http.call_args_list), 1)
+        self.assertEqual(len(http.call_args_list), 3)
+        self.assertEqual(
+            [call.kwargs.get("path", "/cgi-bin/get_system_info.cgi")
+             for call in http.call_args_list],
+            list(capture.HTTP_READ_PATHS),
+        )
         self.assertEqual(report["capture_mode"], "read_only")
         self.assertNotIn("10.2.3.4", json.dumps(report))
         self.assertNotIn("a-private-password", json.dumps(report))
+
+    def test_new_cgi_temperature_fields_and_serial_are_sanitized(self):
+        raw = {
+            "STATS": [{
+                "rate_5s": 231000.4,
+                "watt": 3480,
+                "miner-mode": 0,
+                "chain": [
+                    {"temp_chip": [55, 65], "temp_pcb": [44, 51],
+                     "temp_pic": [42, 48], "sn": "SECRET-DEVICE-123"}
+                ],
+            }]
+        }
+        sanitized = capture.sanitize_value(raw)
+        stats = sanitized["STATS"][0]
+        self.assertEqual(stats["rate_5s"], 231000.4)
+        self.assertEqual(stats["watt"], 3480)
+        self.assertEqual(stats["miner-mode"], 0)
+        self.assertEqual(
+            stats["chain"][0]["temp_chip"], [55, 65]
+        )
+        self.assertEqual(stats["chain"][0]["temp_pcb"], [44, 51])
+        self.assertEqual(stats["chain"][0]["temp_pic"], [42, 48])
+        self.assertEqual(stats["chain"][0]["sn"], "REDACTED")
+        self.assertNotIn("SECRET-DEVICE", json.dumps(sanitized))
+
+    def test_http_probe_rejects_write_routes_and_external_hosts(self):
+        class FakeSession:
+            def __init__(self):
+                self.calls = []
+
+            def get(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                return object()
+
+        session = FakeSession()
+        with self.assertRaises(ValueError):
+            capture._http_get(
+                session, "10.1.2.3",
+                path="/cgi-bin/set_miner_conf.cgi"
+            )
+        with self.assertRaises(ValueError):
+            capture._http_get(
+                session, "10.1.2.3",
+                path="/cgi-bin/reboot.cgi"
+            )
+        self.assertEqual(session.calls, [])
+        capture._http_get(
+            session, "10.1.2.3",
+            path="/cgi-bin/stats.cgi"
+        )
+        self.assertEqual(
+            session.calls[0][0],
+            "http://10.1.2.3/cgi-bin/stats.cgi",
+        )
+        self.assertFalse(
+            session.calls[0][1]["allow_redirects"]
+        )
 
     def test_file_created_private_outside_repository(self):
         fixture = {

@@ -86,6 +86,10 @@ def sanitize_value(value, field=""):
         return value
 
     if isinstance(value, (int, float)):
+        # "chip" includes the letters "ip". These temperature arrays
+        # contain readings, not device IP addresses or identifiers.
+        if lower in {"temp_chip", "temp_pic", "temp_pcb"}:
+            return value
         # Numeric serials / identity values must not be retained.
         return 0 if SENSITIVE_KEY.search(name) else value
 

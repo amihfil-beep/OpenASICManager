@@ -1,0 +1,306 @@
+#!/usr/bin/env python3
+"""Independent, opt-in systemd-timer connectivity watchdog.
+
+Reads local health, the SQLite database in mode=ro, and host route/service
+state. Only optional outbound HTTP is a Telegram alert. Never contacts or
+controls ASICs. No firmware, schedule, or miner changes.
+"""
+
+import argparse
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime
+from urllib.request import (
+    ProxyHandler,
+    Request,
+    build_opener,
+)
+from zoneinfo import ZoneInfo
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "app"))
+
+from monitoring.connectivity import (
+    advance_alarm,
+    classify_incident,
+    idle_state,
+)
+from monitoring.fleet import read_fleet_snapshot
+
+
+STATE_PATH = Path("/var/lib/openasicmanager/connectivity-watchdog.json")
+HEALTH_URL = "http://127.0.0.1:8088/health"
+MOSCOW = ZoneInfo("Europe/Moscow")
+
+
+def _enabled():
+    return os.getenv(
+        "OAM_WATCHDOG_ENABLED", "0"
+    ).strip().casefold() in ("1", "true", "yes", "on")
+
+
+def _configuration():
+    service = os.getenv(
+        "OAM_WATCHDOG_VPN_SERVICE", "openconnect-asic.service"
+    ).strip()
+    interface = os.getenv(
+        "OAM_WATCHDOG_VPN_INTERFACE", "ocasic0"
+    ).strip()
+    target = os.getenv(
+        "OAM_WATCHDOG_ASIC_TARGET", "192.168.1.81"
+    ).strip()
+
+    if not re.fullmatch(r"[A-Za-z0-9_.@-]{1,128}", service):
+        raise ValueError("Unsafe VPN service name")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,15}", interface):
+        raise ValueError("Unsafe VPN interface name")
+
+    address = ipaddress.IPv4Address(target)
+    private_ranges = (
+        ipaddress.IPv4Network("10.0.0.0/8"),
+        ipaddress.IPv4Network("172.16.0.0/12"),
+        ipaddress.IPv4Network("192.168.0.0/16"),
+    )
+    if not any(address in network for network in private_ranges):
+        raise ValueError("Watchdog target must be RFC1918 IPv4")
+    return service, interface, str(address)
+
+
+def _command_ok(args):
+    try:
+        result = subprocess.run(
+            args, check=False, capture_output=True,
+            text=True, timeout=5,
+        )
+        return result.returncode == 0, result.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False, ""
+
+
+def vpn_status(service, interface, target):
+    running, _ = _command_ok(
+        ("systemctl", "is-active", "--quiet", service)
+    )
+    valid_route, output = _command_ok(
+        ("ip", "-4", "route", "get", target)
+    )
+    parts = output.split()
+    routed = (
+        valid_route
+        and "dev" in parts
+        and parts.index("dev") + 1 < len(parts)
+        and parts[parts.index("dev") + 1] == interface
+    )
+    return running, routed
+
+
+def app_available():
+    try:
+        opener = build_opener(ProxyHandler({}))
+        request = Request(HEALTH_URL, method="GET")
+        with opener.open(request, timeout=4) as response:
+            if response.status != 200:
+                return False
+            payload = response.read(16384)
+            if len(payload) >= 16384:
+                return False
+            result = json.loads(payload)
+            return (
+                isinstance(result, dict)
+                and result.get("status") in ("ok", "degraded")
+                and isinstance(result.get("monitoring"), dict)
+            )
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def observe(service, interface, target, now):
+    vpn_service_ok, vpn_route_ok = vpn_status(
+        service, interface, target
+    )
+    web_available = app_available()
+    try:
+        fleet = read_fleet_snapshot(now=now)
+        database_ok = True
+    except Exception:
+        fleet = {
+            "total": 0, "fresh": 0, "offline": 0,
+            "stale": 0, "paused": 0, "mining": 0,
+            "unavailable": 0, "status": "unavailable",
+        }
+        database_ok = False
+
+    problem = classify_incident(
+        fleet, app_available=web_available,
+        vpn_service_ok=vpn_service_ok,
+        vpn_route_ok=vpn_route_ok,
+        database_available=database_ok,
+    )
+    return {
+        "reason": problem,
+        "vpn_service_ok": vpn_service_ok,
+        "vpn_route_ok": vpn_route_ok,
+        "app_available": web_available,
+        "database_available": database_ok,
+        "fleet": fleet,
+    }
+
+
+def load_state():
+    if not STATE_PATH.exists():
+        return idle_state()
+    if STATE_PATH.is_symlink():
+        raise ValueError("Refusing symlink state file")
+    with STATE_PATH.open("r", encoding="utf-8") as stream:
+        state = json.load(stream)
+    if not isinstance(state, dict):
+        raise ValueError("Invalid state file")
+    if state.get("phase") not in ("idle", "active"):
+        raise ValueError("Invalid state phase")
+    for field in ("bad_since", "active_since", "good_since"):
+        value = state.get(field)
+        if value is not None and (
+            type(value) is not int or value < 0
+        ):
+            raise ValueError("Invalid state timestamp")
+    if type(state.get("alert_sent")) is not bool:
+        raise ValueError("Invalid state delivery flag")
+    return state
+
+
+def save_state(state):
+    STATE_PATH.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8",
+            dir=STATE_PATH.parent,
+            prefix=".connectivity-watchdog-",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            os.chmod(temporary, 0o600)
+            json.dump(state, stream, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, STATE_PATH)
+        os.chmod(STATE_PATH, 0o600)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def message_text(event, observation, state, now):
+    fleet = observation["fleet"]
+    timestamp = datetime.fromtimestamp(now, MOSCOW).strftime(
+        "%Y-%m-%d %H:%M:%S MSK"
+    )
+    title = (
+        "OPENASICMANAGER CONNECTIVITY ALERT"
+        if event == "ALERT"
+        else "OPENASICMANAGER CONNECTIVITY RESTORED"
+    )
+    description = (
+        observation["reason"]
+        if event == "ALERT"
+        else (state.get("reason") or "UNKNOWN")
+    )
+    duration = (
+        max(0, int(now - state["active_since"]))
+        if state.get("active_since") is not None
+        else 0
+    )
+    return "\n".join([
+        title,
+        "Reason: " + description,
+        "VPN service: " + ("OK" if observation["vpn_service_ok"] else "DOWN"),
+        "VPN route: " + ("OK" if observation["vpn_route_ok"] else "MISSING"),
+        "Application HTTP: " + ("OK" if observation["app_available"] else "DOWN"),
+        "Farm total: " + str(fleet["total"]),
+        "Fresh: " + str(fleet["fresh"]),
+        "Offline: " + str(fleet["offline"]),
+        "Stale: " + str(fleet["stale"]),
+        "PAUSED (healthy): " + str(fleet["paused"]),
+        "Incident duration seconds: " + str(duration) if event == "RECOVERY" else "",
+        "Time: " + timestamp,
+    ]).replace("\n\n", "\n")
+
+
+def send_telegram(message):
+    # Import only here: --dry-run never touches notification transport.
+    from notifications.telegram import telegram_send_message
+
+    try:
+        ok, _ = telegram_send_message(message, force=False)
+        return bool(ok)
+    except Exception as exc:
+        # Never print URLs containing bot tokens or proxy credentials.
+        print("Telegram delivery failed:", type(exc).__name__)
+        return False
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Observe health without sending or writing state",
+    )
+    args = parser.parse_args(argv)
+
+    if not _enabled() and not args.dry_run:
+        print("Connectivity watchdog disabled (opt-in)")
+        return 0
+
+    try:
+        service, interface, target = _configuration()
+        now = int(time.time())
+        observation = observe(service, interface, target, now)
+        state = load_state()
+        next_state, event = advance_alarm(
+            state, observation["reason"], now
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        print("Watchdog check error:", type(exc).__name__)
+        return 1
+
+    print(json.dumps({
+        "reason": observation["reason"],
+        "vpn_service_ok": observation["vpn_service_ok"],
+        "vpn_route_ok": observation["vpn_route_ok"],
+        "app_available": observation["app_available"],
+        "database_available": observation["database_available"],
+        "fleet": observation["fleet"],
+        "phase": next_state["phase"],
+        "event": event,
+        "dry_run": args.dry_run,
+    }, sort_keys=True))
+
+    if args.dry_run:
+        return 0
+
+    if event in ("ALERT", "RECOVERY"):
+        success = send_telegram(
+            message_text(event, observation, next_state, now)
+        )
+        if success:
+            if event == "ALERT":
+                next_state["alert_sent"] = True
+            else:
+                next_state = idle_state()
+        else:
+            print("Watchdog alert remains pending for retry")
+
+    save_state(next_state)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

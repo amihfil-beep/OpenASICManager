@@ -36,6 +36,8 @@ The only network operations are:
 - CGMiner TCP/4028 commands: version, summary, stats, pools, devs;
 - HTTP GET /cgi-bin/get_system_info.cgi: anonymous status, auth
   challenge scheme and response with explicitly supplied credentials;
+- HTTP GET /cgi-bin/miner_type.cgi: explicit model and firmware
+  build fields (when exposed by the installed firmware);
 - HTTP GET /cgi-bin/summary.cgi and /cgi-bin/stats.cgi: additional
   read-only CGI telemetry contracts documented by BITMAIN; unsupported
   endpoints are recorded as unavailable instead of guessed.
@@ -109,3 +111,26 @@ Do not infer S21/S21 Pro identity solely from a firmware filename:
 `S21`, `S21 Pro`, `S21 XP`, `S21+`, Hydro, and Immersion must not be
 silently conflated. The application only recognizes explicit model
 fields in this development stage.
+
+## Explicit model identity on newer stock CGI firmware
+
+BITMAIN documents a separate read-only `GET /cgi-bin/miner_type.cgi`
+returning `miner_type`, `subtype`, and `fw_version`. When
+`get_system_info.cgi` omits the legacy `minertype`, OpenASICManager
+tries this explicit model endpoint before falling back to a read-only
+CGMiner STATS query. Legacy T21s with the familiar `minertype` do not
+incur an additional CGI request.
+
+The capture helper records `miner_type.cgi` alongside previously
+allowlisted GET endpoints and retains only sanitized model/build
+values. The `subtype` and any device identity/serial fields remain
+redacted. As with other captures, manually review JSON files before
+sharing.
+
+Documentation shows an S21+ response, not a confirmed S21/S21 Pro
+hardware result. This implementation **does not** equate an S21+,
+XP, Hydro or Immersion variant with S21 or S21 Pro. Any model-specific
+compatibility or control assumptions remain blocked pending actual
+device captures and tests.
+
+Reference: https://docs.bitmain.com/en/antminer/CONTENTS.html

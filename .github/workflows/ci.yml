@@ -104,22 +104,30 @@ jobs:
 
           READY=0
 
-          for i in $(seq 1 30); do
+          # The socket may be ready before the recurring maintenance
+          # and monitoring workers have completed their first cycle.
+          # Wait for aggregate health rather than the first HTTP 200.
+          for i in $(seq 1 60); do
             if curl \
               -fsS \
               http://127.0.0.1:18089/health \
               >"$HEALTH" \
               2>/dev/null
             then
-              READY=1
-              break
+              if python -c 'import json,sys; data=json.load(open(sys.argv[1])); sys.exit(0 if data.get("status") == "ok" else 1)' "$HEALTH"; then
+                READY=1
+                break
+              fi
             fi
 
             sleep 1
           done
 
           if [ "$READY" -ne 1 ]; then
-            echo "Application failed to start"
+            echo "Application did not reach healthy status"
+            if [ -f "$HEALTH" ]; then
+              cat "$HEALTH"
+            fi
             cat "$LOG"
             exit 1
           fi

@@ -100,7 +100,7 @@ class StockHardwareCaptureTests(unittest.TestCase):
             [call.args[1] for call in cg.call_args_list],
             list(capture.CGMINER_COMMANDS),
         )
-        self.assertEqual(len(http.call_args_list), 3)
+        self.assertEqual(len(http.call_args_list), 4)
         self.assertEqual(
             [call.kwargs.get("path", "/cgi-bin/get_system_info.cgi")
              for call in http.call_args_list],
@@ -134,6 +134,22 @@ class StockHardwareCaptureTests(unittest.TestCase):
         self.assertEqual(stats["chain"][0]["temp_pic"], [42, 48])
         self.assertEqual(stats["chain"][0]["sn"], "REDACTED")
         self.assertNotIn("SECRET-DEVICE", json.dumps(sanitized))
+
+    def test_miner_type_cgi_preserves_explicit_model_and_firmware(self):
+        payload = {
+            "miner_type": "Antminer S21 Pro",
+            "fw_version": "Fri Apr 18 16:15:41 CST 2025",
+            "subtype": "AMLCtrl_DEVICE_SECRET",
+            "serinum": "PRIVATE_SERIAL_1234",
+        }
+        sanitized = capture.sanitize_value(payload)
+        self.assertEqual(sanitized["miner_type"], "Antminer S21 Pro")
+        self.assertEqual(
+            sanitized["fw_version"], "Fri Apr 18 16:15:41 CST 2025"
+        )
+        flat = json.dumps(sanitized)
+        self.assertNotIn("PRIVATE_SERIAL_1234", flat)
+        self.assertNotIn("AMLCtrl_DEVICE_SECRET", flat)
 
     def test_http_probe_rejects_write_routes_and_external_hosts(self):
         class FakeSession:

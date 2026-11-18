@@ -123,7 +123,9 @@ class CGIReadOnlyParserTests(unittest.TestCase):
         self.assertIsNone(result["hashrate"])
         self.assertIsNone(result["avg_hashrate"])
         self.assertIsNone(result["power"])
-        self.assertEqual(result["temp"], 120)
+        # An implausible but potentially dangerous 150 C reading
+        # remains visible instead of being silently discarded.
+        self.assertEqual(result["temp"], 150)
         self.assertIsNone(result["observed_work_mode"])
 
     def test_nested_unexpected_payloads_are_safe(self):
@@ -135,6 +137,15 @@ class CGIReadOnlyParserTests(unittest.TestCase):
         self.assertEqual(result["hashrate"], 1.0)
         self.assertIsNone(result["pool"])
         self.assertIsNone(result["temp"])
+
+    def test_classic_pool_key_aliases_are_accepted(self):
+        result = normalize_cgi_telemetry(
+            pools_payload={"POOLS": [{
+                "Status": "Alive",
+                "URL": "legacy.example.invalid",
+            }]}
+        )
+        self.assertEqual(result["pool"], "legacy.example.invalid")
 
     def test_only_alive_pool_is_reported(self):
         result = normalize_cgi_telemetry(

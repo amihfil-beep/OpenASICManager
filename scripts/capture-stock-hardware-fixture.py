@@ -22,6 +22,7 @@ from requests.auth import HTTPDigestAuth
 CGMINER_COMMANDS = ("version", "summary", "stats", "pools", "devs")
 HTTP_READ_PATHS = (
     "/cgi-bin/get_system_info.cgi",
+    "/cgi-bin/miner_type.cgi",
     "/cgi-bin/summary.cgi",
     "/cgi-bin/stats.cgi",
 )
@@ -126,7 +127,7 @@ def sanitize_value(value, field=""):
 
     if lower in {
         "cgminer", "version", "system_filesystem_version",
-        "miner_version", "firmware_version", "bmminer",
+        "miner_version", "firmware_version", "fw_version", "bmminer",
     } and SAFE_VERSION.fullmatch(value):
         # Do not allow an IP-like version to become a covert host leak.
         if IPV4_TEXT.search(value):

@@ -135,6 +135,26 @@ class StockHardwareCaptureTests(unittest.TestCase):
         self.assertEqual(stats["chain"][0]["sn"], "REDACTED")
         self.assertNotIn("SECRET-DEVICE", json.dumps(sanitized))
 
+    def test_rate_unit_keeps_only_safe_known_measurements(self):
+        for unit in ("GH/s", "TH/s", "MH/s", "PH/s"):
+            with self.subTest(unit=unit):
+                self.assertEqual(
+                    capture.sanitize_value(unit, "rate_unit"),
+                    unit,
+                )
+
+        for untrusted in (
+            "redacted-secret",
+            "TH/s; token=private",
+            "https://internal.example",
+            "H/s",
+        ):
+            with self.subTest(untrusted=untrusted):
+                self.assertEqual(
+                    capture.sanitize_value(untrusted, "rate_unit"),
+                    "REDACTED",
+                )
+
     def test_miner_type_cgi_preserves_explicit_model_and_firmware(self):
         payload = {
             "miner_type": "Antminer S21 Pro",

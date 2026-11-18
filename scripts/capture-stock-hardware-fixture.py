@@ -35,7 +35,7 @@ CAPTURE_DIR = Path.home() / "openasicmanager-hardware-fixtures"
 SENSITIVE_KEY = re.compile(
     r"pass|pwd|token|secret|cookie|auth|session|wallet|worker|"
     r"username|userid|user|url|endpoint|hostname|host|ip|"
-    r"mac|serial|address|stratum|uuid|guid|chip_id|deviceid|uid|imei|boardid",
+    r"mac|serial|(?:^sn$)|address|stratum|uuid|guid|chip_id|deviceid|uid|imei|boardid",
     re.IGNORECASE,
 )
 SAFE_MODEL = re.compile(r"^[A-Za-z0-9 _().+-]{1,80}$")

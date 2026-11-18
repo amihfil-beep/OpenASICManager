@@ -134,6 +134,12 @@ def sanitize_value(value, field=""):
             return "REDACTED"
         return value
 
+    # Hashrate units are necessary to correctly interpret rate_5s
+    # and rate_avg in a sanitized S21 fixture. Only these exact
+    # constant strings are safe to retain; no arbitrary text.
+    if lower == "rate_unit":
+        return value if value in {"GH/s", "TH/s", "MH/s", "PH/s"} else "REDACTED"
+
     if NUMERIC_TEXT.fullmatch(value) and len(value) <= 32:
         return value
 

@@ -58,6 +58,7 @@ def classify_fleet(rows, now, fresh_seconds=FRESH_SECONDS):
 
 def classify_incident(
     fleet, *, app_available, vpn_service_ok, vpn_route_ok,
+    database_available=True,
     min_miners=MASS_OUTAGE_MIN_MINERS,
     fraction=MASS_OUTAGE_FRACTION,
 ):
@@ -68,6 +69,8 @@ def classify_incident(
         return "VPN_ROUTE_UNAVAILABLE"
     if not app_available:
         return "APPLICATION_UNAVAILABLE"
+    if not database_available:
+        return "DATABASE_UNAVAILABLE"
 
     total = int(fleet["total"])
     required = max(int(min_miners), ceil(total * float(fraction)))

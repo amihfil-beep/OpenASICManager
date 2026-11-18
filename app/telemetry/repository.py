@@ -34,91 +34,92 @@ def save_telemetry_snapshot():
     )
 
     conn = db()
-
-    miners = conn.execute("""
-        SELECT
-            id,
-            ip,
-            name,
-            driver,
-            enabled,
-            last_state,
-            hashrate,
-            avg_hashrate,
-            temp,
-            power
-
-        FROM miners
-
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """).fetchall()
-
-
-    rows = []
-
-    for miner in miners:
-
-        rows.append((
-            now,
-            miner["id"],
-            miner["ip"],
-            miner["name"],
-            miner["driver"],
-            miner["last_state"],
-            miner["hashrate"],
-            miner["avg_hashrate"],
-            miner["temp"],
-            miner["power"],
-        ))
-
-
-    if rows:
-
-        conn.executemany("""
-            INSERT INTO telemetry
-            (
-                ts,
-                miner_id,
+    try:
+    
+        miners = conn.execute("""
+            SELECT
+                id,
                 ip,
                 name,
                 driver,
-                state,
+                enabled,
+                last_state,
                 hashrate,
                 avg_hashrate,
                 temp,
                 power
-            )
-
-            VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-        """, rows)
-
-
-    retention_limit = (
-        now
-        -
-        TELEMETRY_RETENTION_DAYS
-        * 86400
-    )
-
-
-    conn.execute("""
-        DELETE FROM telemetry
-        WHERE ts < ?
-    """, (
-        retention_limit,
-    ))
-
-
-    conn.commit()
-    conn.close()
-
+    
+            FROM miners
+    
+            WHERE
+                enabled=1
+                AND driver IN (
+                    'awesome',
+                    'bitmain_stock'
+                )
+        """).fetchall()
+    
+    
+        rows = []
+    
+        for miner in miners:
+    
+            rows.append((
+                now,
+                miner["id"],
+                miner["ip"],
+                miner["name"],
+                miner["driver"],
+                miner["last_state"],
+                miner["hashrate"],
+                miner["avg_hashrate"],
+                miner["temp"],
+                miner["power"],
+            ))
+    
+    
+        if rows:
+    
+            conn.executemany("""
+                INSERT INTO telemetry
+                (
+                    ts,
+                    miner_id,
+                    ip,
+                    name,
+                    driver,
+                    state,
+                    hashrate,
+                    avg_hashrate,
+                    temp,
+                    power
+                )
+    
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+            """, rows)
+    
+    
+        retention_limit = (
+            now
+            -
+            TELEMETRY_RETENTION_DAYS
+            * 86400
+        )
+    
+    
+        conn.execute("""
+            DELETE FROM telemetry
+            WHERE ts < ?
+        """, (
+            retention_limit,
+        ))
+    
+    
+        conn.commit()
+    finally:
+        conn.close()
 
 def telemetry_stats_row():
 

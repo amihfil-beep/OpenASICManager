@@ -134,3 +134,37 @@ compatibility or control assumptions remain blocked pending actual
 device captures and tests.
 
 Reference: https://docs.bitmain.com/en/antminer/CONTENTS.html
+
+## Offline analysis of a captured fixture (0.10.0 development)
+
+After collecting an S21 or S21 Pro fixture, review the sanitized JSON
+manually for any unexpected secrets before sharing it or committing it.
+The existing capture utility saves its files with mode `0600` under
+`/root/openasicmanager-hardware-fixtures` when run as root.
+
+The standalone analyzer `scripts/analyze-stock-hardware-fixture.py`
+reads a **previously sanitized** JSON file and prints only a short
+metric/evidence report. It makes no network requests, opens no database,
+and sends no control commands. No miner IP, pool address, worker name,
+serial number, credential or firmware string is printed.
+
+Example after a real fixture has been created:
+
+    cd /root/projects/openasicmanager
+    /opt/openasicmanager/venv/bin/python scripts/analyze-stock-hardware-fixture.py "$(find /root/openasicmanager-hardware-fixtures -maxdepth 1 -name 's21_pro_stock_*.json' -type f | sort | tail -n 1)"
+
+Only run the analyzer after a matching fixture file exists. A report
+with model evidence `matches_expected` means the model name was found
+in the saved read-only response. It does **not** certify firmware
+compatibility or authorize PAUSE/RESUME/REBOOT on that ASIC.
+
+Legacy CGMiner `GHS 5s` and new CGI `rate_5s` can be compared in TH/s
+only when the CGI provides a recognized, explicit `rate_unit`
+(`GH/s`, `TH/s`, `MH/s`, `PH/s`). Other unit values remain
+redacted in new captures and are never guessed.
+A reading difference is diagnostic only: the source requests were
+not simultaneous, and a miner may be ramping up or cooling down.
+
+The standalone analyzer is not wired into production monitoring or
+control dispatch. The release gate still requires reviewed real
+S21/S21 Pro stock-firmware captures and operator-approved action tests.

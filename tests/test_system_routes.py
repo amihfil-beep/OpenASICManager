@@ -7,6 +7,25 @@ from app_version import APP_VERSION
 
 
 class SystemRoutesTests(unittest.TestCase):
+    def setUp(self):
+        monitoring = patch(
+            "api.system.monitoring_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        )
+        descriptors = patch(
+            "api.system.file_descriptor_health_snapshot",
+            return_value={
+                "status": "ok",
+                "healthy": True,
+                "open_fds": 7,
+                "soft_limit": 65535,
+            },
+        )
+        monitoring.start()
+        descriptors.start()
+        self.addCleanup(monitoring.stop)
+        self.addCleanup(descriptors.stop)
+
     def make_router(self):
         return create_system_router()
 
@@ -132,6 +151,49 @@ class SystemRoutesTests(unittest.TestCase):
         self.assertEqual(
             result["recurring_maintenance"]["last_error"],
             "materializer database error",
+        )
+
+    def test_health_degrades_when_monitoring_cycle_failed(self):
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.monitoring_health_snapshot",
+            return_value={
+                "status": "error",
+                "healthy": False,
+                "last_error": "OperationalError: database unavailable",
+            },
+        ):
+            result = self.endpoint("/health")()
+
+        self.assertEqual(result["status"], "degraded")
+        self.assertEqual(result["monitoring"]["status"], "error")
+
+    def test_health_degrades_at_critical_fd_pressure(self):
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.file_descriptor_health_snapshot",
+            return_value={
+                "status": "critical",
+                "healthy": False,
+                "open_fds": 980,
+                "soft_limit": 1024,
+            },
+        ):
+            result = self.endpoint("/health")()
+
+        self.assertEqual(result["status"], "degraded")
+        self.assertEqual(
+            result["file_descriptors"]["status"], "critical"
         )
 
     def test_status_delegates_to_existing_read_models(self):

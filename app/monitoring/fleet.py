@@ -4,8 +4,8 @@ Never starts ASIC network requests, changes miner state, or writes the
 production database. PAUSED counts as available when telemetry is fresh.
 """
 
- import time
- from monitoring.repository import read_fleet_health_rows
+import time
+from monitoring.repository import read_fleet_health_rows
 from monitoring.connectivity import (
     MASS_OUTAGE_FRACTION,
     MASS_OUTAGE_MIN_MINERS,

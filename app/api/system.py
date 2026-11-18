@@ -22,6 +22,7 @@ from scheduler.repository import (
 from scheduler.supervisor import scheduler_health_snapshot
 from monitoring.service import monitoring_health_snapshot
 from monitoring.resources import file_descriptor_health_snapshot
+from monitoring.fleet import read_fleet_snapshot
 from service_history.repository import (
     latest_service_records_by_miner,
 )
@@ -40,12 +41,23 @@ def create_system_router():
         maintenance = materializer_health_snapshot()
         monitoring = monitoring_health_snapshot()
         descriptors = file_descriptor_health_snapshot()
+        try:
+            fleet = read_fleet_snapshot()
+        except Exception as exc:
+            # A failed read-only SQLite probe must not break /health.
+            # Never expose DB paths or private exception messages.
+            fleet = {
+                "status": "unavailable",
+                "healthy": False,
+                "error": type(exc).__name__,
+            }
 
         healthy = bool(
             scheduler["healthy"]
             and maintenance["healthy"]
             and monitoring["healthy"]
             and descriptors["healthy"]
+            and fleet["healthy"]
         )
 
         return {
@@ -62,6 +74,7 @@ def create_system_router():
             "scheduler": scheduler,
             "recurring_maintenance": maintenance,
             "monitoring": monitoring,
+            "fleet": fleet,
             "file_descriptors": descriptors,
         }
 

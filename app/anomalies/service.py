@@ -1,8 +1,13 @@
 """Background anomaly detection service."""
 
+import json
 import logging
+from pathlib import Path
 import time
 from datetime import datetime
+
+import config as app_config
+from monitoring.connectivity import suppress_individual_offline
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +32,22 @@ from anomalies.repository import (
     load_group_anomaly_override_snapshot,
     transition_anomaly_condition,
 )
+
+
+def aggregated_offline_alert_sent(miners):
+    """Fail open to legacy per-device alerts when aggregate delivery fails."""
+    if not app_config.env_bool("OAM_WATCHDOG_ENABLED", False):
+        return False
+
+    path = Path("/var/lib/openasicmanager/connectivity-watchdog.json")
+    try:
+        if path.is_symlink() or path.stat().st_size > 8192:
+            return False
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return False
+
+    return suppress_individual_offline(miners, data)
 
 
 class AnomalyRuntime:
@@ -132,6 +153,12 @@ def anomaly_scan(
     scheduler_enabled, miners = (
         anomaly_scan_snapshot()
     )
+
+    # Only an already-delivered fleet alarm may suppress new
+    # per-device OFFLINE issues. Existing issues still resolve.
+    # Missing state, failed Telegram or disabled watchdog preserve
+    # the original issue notification path.
+    mass_offline_alert_sent = aggregated_offline_alert_sent(miners)
 
     maintenance = (
         active_maintenance_snapshot(
@@ -243,7 +270,10 @@ def anomaly_scan(
                 if offline
                 else f"ASIC reachable; state={state}"
             ),
-            suppress_new=maintenance_active,
+            suppress_new=(
+                maintenance_active
+                or mass_offline_alert_sent
+            ),
         )
 
         temp_value = normalize_temperature(

@@ -2,11 +2,29 @@
 
 Status: **development / not released**. Production stays on v0.9.1.
 
+## One stock-firmware code path for the T21/S21/S21 Pro family
+
+T21, S21 (air) and S21 Pro (air) are developed and tested through
+**one** `bitmain_stock` driver, the same pure CGI/CGMiner parsing logic,
+and a common regression suite. There are no model-specific Git branches
+or separate feature implementations. The real stock T21 PAUSED and
+MINING samples collected 2026-11-18 exercise this shared API contract:
+CGMiner summary/stats/pools/devs/version; HTTP Digest CGI model,
+summary and stats. In MINING, CGI reported explicit GH/s, valid
+temperature and power; while PAUSED, CGI reported suffix-only /s with
+empty STATS. Tests cover these outcomes without changing control logic.
+
+What is *shared in code* is not proof that every firmware build returns
+identical fields or uses identical control payloads. T21 is the physical
+hardware evidence; S21/S21 Pro live data and control validation remain
+separate release-acceptance evidence, **not** separate drivers.
+
+
 ## Support evidence as of 2026-11-18
 
 | Model | Firmware | Read-only parser | Actual live polling | Verified control | Remote Web |
 | --- | --- | --- | --- | --- | --- |
-| T21 | Bitmain stock | Production baseline | 18 devices | PAUSE/RESUME exercised in production | Existing functionality |
+| T21 | Bitmain stock | Shared parser plus live PAUSED/MINING CGI evidence | 18 devices; 2026-11-18 authenticated read-only CGI on ASIC-081 | PAUSE/RESUME exercised in production | Existing functionality |
 | T21 | Awesome / AnthillOS | Production baseline | 12 devices | PAUSE/RESUME exercised in production | Existing functionality |
 | S21 (air) | Bitmain stock | Synthetic tests only | Not yet validated | Not tested | Not tested |
 | S21 Pro (air) | Bitmain stock | Synthetic tests only | Not yet validated | Not tested | Not tested |

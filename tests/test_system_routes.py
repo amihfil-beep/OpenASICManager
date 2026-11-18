@@ -21,10 +21,24 @@ class SystemRoutesTests(unittest.TestCase):
                 "soft_limit": 65535,
             },
         )
+        fleet = patch(
+            "api.system.read_fleet_snapshot",
+            return_value={
+                "status": "ok",
+                "healthy": True,
+                "total": 30,
+                "fresh": 30,
+                "offline": 0,
+                "stale": 0,
+                "mass_outage": False,
+            },
+        )
         monitoring.start()
         descriptors.start()
+        fleet.start()
         self.addCleanup(monitoring.stop)
         self.addCleanup(descriptors.stop)
+        self.addCleanup(fleet.stop)
 
     def make_router(self):
         return create_system_router()
@@ -91,6 +105,46 @@ class SystemRoutesTests(unittest.TestCase):
         )
         parsed = datetime.fromisoformat(result["time"])
         self.assertIsNotNone(parsed.tzinfo)
+
+    def test_health_degrades_on_mass_fleet_loss_even_if_poller_ok(self):
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.read_fleet_snapshot",
+            return_value={
+                "status": "degraded",
+                "healthy": False,
+                "total": 30,
+                "fresh": 0,
+                "offline": 30,
+                "stale": 0,
+                "mass_outage": True,
+            },
+        ):
+            result = self.endpoint("/health")()
+        self.assertEqual(result["status"], "degraded")
+        self.assertTrue(result["monitoring"]["healthy"])
+        self.assertEqual(result["fleet"]["offline"], 30)
+
+    def test_health_degrades_safely_on_fleet_probe_error(self):
+        with patch(
+            "api.system.scheduler_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.materializer_health_snapshot",
+            return_value={"status": "ok", "healthy": True},
+        ), patch(
+            "api.system.read_fleet_snapshot",
+            side_effect=RuntimeError("PRIVATE DATABASE LOCATION"),
+        ):
+            result = self.endpoint("/health")()
+        self.assertEqual(result["status"], "degraded")
+        self.assertEqual(result["fleet"]["status"], "unavailable")
+        self.assertNotIn("PRIVATE DATABASE LOCATION", str(result))
 
     def test_health_degrades_when_scheduler_heartbeat_is_unhealthy(self):
         scheduler = {

@@ -7,11 +7,14 @@ Application-owned logging and shutdown signalling are
 supplied explicitly through TelemetryRuntime.
 """
 
+import logging
+
 from telemetry.repository import (
     save_telemetry_snapshot,
 )
 
 
+LOGGER = logging.getLogger(__name__)
 TELEMETRY_INTERVAL = 300
 
 
@@ -62,15 +65,17 @@ def telemetry_loop(runtime):
 
         except Exception as exc:
 
-            runtime.log_event(
-                source="SYSTEM",
-                action="TELEMETRY_ERROR",
-                success=False,
-                message=(
-                    f"{type(exc).__name__}: "
-                    f"{exc}"
-                ),
-            )
+            LOGGER.exception("Telemetry snapshot failed")
+            try:
+                runtime.log_event(
+                    source="SYSTEM",
+                    action="TELEMETRY_ERROR",
+                    success=False,
+                    message=f"{type(exc).__name__}: {exc}",
+                )
+            except Exception:
+                # Audit writes can fail in the same SQLite outage.
+                LOGGER.exception("Unable to persist telemetry error")
 
 
         if runtime.stop_event.wait(

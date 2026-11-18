@@ -9,13 +9,14 @@ def db():
         app_config.DATABASE_PATH,
         timeout=10,
     )
-
-    conn.row_factory = sqlite3.Row
-
-    conn.execute(
-        "PRAGMA journal_mode=WAL"
-    )
-
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+    except BaseException:
+        # A failed journal-mode initialization must not leave the
+        # connection open when the process is under FD pressure.
+        conn.close()
+        raise
     return conn
 
 
@@ -24,22 +25,14 @@ def get_setting(
     default=None,
 ):
     conn = db()
-
-    row = conn.execute(
-        """
-        SELECT value
-        FROM settings
-        WHERE key=?
-        """,
-        (key,),
-    ).fetchone()
-
-    conn.close()
-
-    if not row:
-        return default
-
-    return row["value"]
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key=?",
+            (key,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row["value"] if row else default
 
 
 def set_setting(
@@ -47,81 +40,54 @@ def set_setting(
     value,
 ):
     conn = db()
-
-    conn.execute("""
-        INSERT INTO settings(
-            key,
-            value
-        )
-        VALUES (?, ?)
-
-        ON CONFLICT(key)
-        DO UPDATE SET
-            value=excluded.value
-    """, (
-        key,
-        str(value),
-    ))
-
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("""
+            INSERT INTO settings(key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """, (key, str(value)))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_miner(
     miner_id,
 ):
     conn = db()
-
-    row = conn.execute(
-        """
-        SELECT *
-        FROM miners
-        WHERE id=?
-        """,
-        (miner_id,),
-    ).fetchone()
-
-    conn.close()
-
-    return row
+    try:
+        return conn.execute(
+            "SELECT * FROM miners WHERE id=?",
+            (miner_id,),
+        ).fetchone()
+    finally:
+        conn.close()
 
 
 def get_poll_miners():
     conn = db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM miners
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """).fetchall()
-
-    conn.close()
-
-    return list(rows)
+    try:
+        return list(conn.execute("""
+            SELECT *
+            FROM miners
+            WHERE enabled=1
+              AND driver IN ('awesome', 'bitmain_stock')
+        """).fetchall())
+    finally:
+        conn.close()
 
 
 def get_control_miners():
     conn = db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM miners
-        WHERE
-            enabled=1
-            AND driver IN (
-                'awesome',
-                'bitmain_stock'
-            )
-    """).fetchall()
-
-    conn.close()
-
-    return list(rows)
+    try:
+        return list(conn.execute("""
+            SELECT *
+            FROM miners
+            WHERE enabled=1
+              AND driver IN ('awesome', 'bitmain_stock')
+        """).fetchall())
+    finally:
+        conn.close()
 
 
 # ============================================================

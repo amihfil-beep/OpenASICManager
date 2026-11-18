@@ -21,7 +21,7 @@ def read_fleet_health_rows():
             SELECT last_state, last_seen
             FROM miners
             WHERE enabled=1
-              AND driver!=\'unset\'
+              AND driver!='unset'
             """
         ).fetchall()
     finally:

@@ -10,6 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from requests.auth import HTTPDigestAuth
 
+from drivers.bitmain_models import stock_model_from_responses
+
 from config import (
     BITMAIN_USERNAME,
     BITMAIN_PASSWORD,
@@ -456,26 +458,30 @@ def detect_stock(ip):
         return None
 
 
-    minertype = str(
-        data.get(
-            "minertype",
-            "",
+    # Older firmware exposes minertype in system info; newer
+    # Bitmain CGI examples may omit it. A read-only CGMiner
+    # stats query is an alternative, but we never guess a model
+    # from the firmware version string.
+    model = stock_model_from_responses(system_info=data)
+
+    if not model:
+        stats_data = cgminer_query(ip, "stats")
+        model = stock_model_from_responses(
+            stats_items=(
+                stats_data.get("STATS", [])
+                if isinstance(stats_data, dict)
+                else []
+            )
         )
-    ).strip()
 
-
-    if not minertype.lower().startswith(
-        "antminer"
-    ):
-
+    if not model:
         return None
-
 
     return {
         "ip": str(ip),
         "driver": "bitmain_stock",
         "type": "Bitmain Stock",
-        "model": minertype,
+        "model": model,
         "firmware":
             data.get(
                 "system_filesystem_version"

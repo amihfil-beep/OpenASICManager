@@ -159,7 +159,7 @@ class StockHardwareCaptureTests(unittest.TestCase):
         self.assertNotIn("10.1.2.3", json.dumps(fixture))
 
     def test_rate_unit_keeps_only_safe_known_measurements(self):
-        for unit in ("GH/s", "TH/s", "MH/s", "PH/s"):
+        for unit in ("GH/s", "TH/s", "MH/s", "PH/s", "/s"):
             with self.subTest(unit=unit):
                 self.assertEqual(
                     capture.sanitize_value(unit, "rate_unit"),
@@ -177,6 +177,22 @@ class StockHardwareCaptureTests(unittest.TestCase):
                     capture.sanitize_value(untrusted, "rate_unit"),
                     "REDACTED",
                 )
+
+    def test_real_t21_paused_cgi_suffix_retained_without_secrets(self):
+        raw = {
+            "SUMMARY": [{
+                "rate_5s": 0.0,
+                "rate_avg": 0.0,
+                "rate_unit": "/s",
+                "worker": "PRIVATE-WORKER",
+                "serial": "PRIVATE-SERIAL",
+            }]
+        }
+        result = capture.sanitize_value(raw)
+        self.assertEqual(result["SUMMARY"][0]["rate_unit"], "/s")
+        self.assertEqual(result["SUMMARY"][0]["rate_5s"], 0.0)
+        self.assertNotIn("PRIVATE-WORKER", json.dumps(result))
+        self.assertNotIn("PRIVATE-SERIAL", json.dumps(result))
 
     def test_miner_type_cgi_preserves_explicit_model_and_firmware(self):
         payload = {

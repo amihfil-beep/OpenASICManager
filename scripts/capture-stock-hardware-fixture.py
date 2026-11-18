@@ -312,7 +312,7 @@ def save_fixture(fixture, directory=CAPTURE_DIR):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", required=True, choices=("S21", "S21-Pro"))
+    parser.add_argument("--model", required=True, choices=("T21", "S21", "S21-Pro"))
     args = parser.parse_args()
 
     print("READ-ONLY capture: CGMiner + allowlisted GET CGI endpoints.")

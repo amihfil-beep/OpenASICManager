@@ -134,11 +134,17 @@ def sanitize_value(value, field=""):
             return "REDACTED"
         return value
 
-    # Hashrate units are necessary to correctly interpret rate_5s
-    # and rate_avg in a sanitized S21 fixture. Only these exact
-    # constant strings are safe to retain; no arbitrary text.
+    # Real stock T21 returns "/s" with zero values while PAUSED,
+    # but "GH/s" with nonzero values while MINING (2026-11-18).
+    # A bare "/s" is a suffix without a known magnitude; retain it
+    # only as a safe diagnostic token. The parser must NOT infer TH/s
+    # or GH/s from it. All other arbitrary strings stay redacted.
     if lower == "rate_unit":
-        return value if value in {"GH/s", "TH/s", "MH/s", "PH/s"} else "REDACTED"
+        return (
+            value
+            if value in {"GH/s", "TH/s", "MH/s", "PH/s", "/s"}
+            else "REDACTED"
+        )
 
     if NUMERIC_TEXT.fullmatch(value) and len(value) <= 32:
         return value

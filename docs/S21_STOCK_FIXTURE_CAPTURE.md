@@ -205,3 +205,49 @@ actual T21 baseline confirms which legacy fields our own stock T21
 exposes; it is **not evidence** that S21 and S21 Pro have identical
 firmware APIs. Separate real captures and controlled hardware tests
 remain necessary for both S21 models.
+
+## Stock T21 observed PAUSED vs MINING CGI contracts (2026-11-18)
+
+Physical reference: ASIC-081, Antminer T21 with Bitmain stock firmware,
+accessed through the established OpenConnect VPN. Read-only probes
+confirmed all five CGMiner calls and four authenticated HTTP Digest
+CGI endpoints (HTTP 200). The actual saved captures remain private
+outside Git and require manual sensitive-data review before sharing.
+
+Read-only **PAUSED** observation:
+- CGMiner SUMMARY: `GHS 5s = 0`, `GHS av = 0`.
+- CGI SUMMARY: `rate_5s = 0`, `rate_avg = 0`,
+  `rate_unit = "/s"` (two ASCII characters).
+- CGI STATS: empty `STATS: []`.
+- `/s` is **not** a complete rate scale and must never be interpreted
+  automatically as GH/s, TH/s, or H/s. An observed zero is not itself
+  permission to infer a PAUSED control state.
+
+Read-only **MINING** observation from the same ASIC, with only that
+device manually started by its operator and 29 peers remaining PAUSED:
+- CGMiner: `GHS 5s = 188903.39` and `GHS av = 174066.79`
+  (188.90339 and 174.06679 TH/s).
+- CGI: `rate_5s = 186433.27`, `rate_avg = 175819.69`,
+  and explicit `rate_unit = "GH/s"`
+  (186.43327 and 175.81969 TH/s).
+- CGI STATS: one entry; maximum chip temp 48 C, power 3647 W,
+  observed `miner-mode = 0` (metadata, **not** verified control state).
+- Differences from CGMiner are expected because samples were obtained
+  sequentially; there is no universal fixed ratio when devices ramp
+  up or vary output.
+
+The sanitized fixture allowlist now retains only the exact safe
+`"/s"` token and documented explicit units. The offline analyzer
+reports the fixed classifier `suffix_only_scale_unknown` when it
+encounters `"/s"`, and does not convert the associated hashrate.
+When it sees an explicit supported unit such as `"GH/s"`, it
+reports `explicit_scale` and converts normally. It also reports the
+number of CGI STATS records to distinguish empty data from missing
+CGI endpoints. It never prints arbitrary device strings.
+
+**Do not change or infer PAUSE/RESUME/REBOOT implementation based on
+`rate_unit`, `miner-mode` or empty `STATS`.** This is an observed
+pair of samples from one T21 firmware, not a universal state rule for
+S21/S21 Pro. Existing production 0.9.1 remains unchanged. Real S21
+and S21 Pro hardware evidence and operator-approved action testing
+are still required before the 0.10.0 release.

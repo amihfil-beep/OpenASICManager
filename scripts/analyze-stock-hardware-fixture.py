@@ -15,7 +15,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "app"))
 
-from drivers.bitmain_cgi_telemetry import normalize_cgi_telemetry
+from drivers.bitmain_cgi_telemetry import RATE_TO_TH, normalize_cgi_telemetry
 from drivers.bitmain_models import stock_model_from_responses
 
 
@@ -122,6 +122,37 @@ def analyze_fixture(fixture):
         summary_payload=cgi_summary,
         stats_payload=cgi_stats,
     )
+
+    # Return only a fixed diagnostic classification, never untrusted
+    # strings from an ASIC response. T21 stock has been observed
+    # returning bare "/s" while PAUSED and "GH/s" while MINING.
+    cgi_rows = (
+        cgi_summary.get("SUMMARY")
+        if isinstance(cgi_summary, dict)
+        else None
+    )
+    summary_row = (
+        next((row for row in cgi_rows if isinstance(row, dict)), {})
+        if isinstance(cgi_rows, list)
+        else {}
+    )
+    rate_unit = summary_row.get("rate_unit")
+    if isinstance(rate_unit, str) and rate_unit in RATE_TO_TH:
+        rate_unit_status = "explicit_scale"
+    elif rate_unit == "/s":
+        rate_unit_status = "suffix_only_scale_unknown"
+    else:
+        rate_unit_status = "unavailable_or_redacted"
+
+    stats_rows = (
+        cgi_stats.get("STATS")
+        if isinstance(cgi_stats, dict)
+        else None
+    )
+    stats_entry_count = (
+        len(stats_rows) if isinstance(stats_rows, list) else None
+    )
+
     legacy_rate = _legacy_rate(cg_summary, "GHS 5s")
     cgi_rate = normalized["hashrate"]
     delta = (
@@ -144,6 +175,8 @@ def analyze_fixture(fixture):
             "cgi_stats": cgi_stats is not None,
         },
         "metrics": {
+            "cgi_rate_unit_status": rate_unit_status,
+            "cgi_stats_entries": stats_entry_count,
             "cgminer_hashrate_ths": legacy_rate,
             "cgi_hashrate_ths": (
                 round(cgi_rate, 4) if cgi_rate is not None else None

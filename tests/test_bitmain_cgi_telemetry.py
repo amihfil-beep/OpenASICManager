@@ -70,6 +70,56 @@ class CGIReadOnlyParserTests(unittest.TestCase):
                 self.assertIsNone(result["hashrate"])
                 self.assertIsNone(result["avg_hashrate"])
 
+    def test_real_t21_paused_suffix_does_not_invent_hashrate_scale(self):
+        # Observed on physical stock T21 (ASIC-081) while PAUSED.
+        # A bare "/s" carries no GH/TH magnitude, even if rate=0.
+        result = normalize_cgi_telemetry(
+            {"SUMMARY": [{
+                "rate_5s": 0.0,
+                "rate_avg": 0.0,
+                "rate_unit": "/s",
+            }]},
+            {"STATS": []},
+        )
+        self.assertIsNone(result["hashrate"])
+        self.assertIsNone(result["avg_hashrate"])
+        self.assertIsNone(result["power"])
+        self.assertIsNone(result["temp"])
+        self.assertNotIn("state", result)
+
+    def test_t21_suffix_nonzero_still_requires_explicit_scale(self):
+        # Fails closed when a future firmware gives nonzero "/s" data.
+        result = normalize_cgi_telemetry(
+            {"SUMMARY": [{
+                "rate_5s": 186433.27,
+                "rate_avg": 175819.69,
+                "rate_unit": "/s",
+            }]}
+        )
+        self.assertIsNone(result["hashrate"])
+        self.assertIsNone(result["avg_hashrate"])
+
+    def test_real_t21_mining_ghs_and_stats(self):
+        # Numeric shape observed on physical stock T21 while MINING.
+        result = normalize_cgi_telemetry(
+            {"SUMMARY": [{
+                "rate_5s": 186433.27,
+                "rate_avg": 175819.69,
+                "rate_unit": "GH/s",
+            }]},
+            {"STATS": [{
+                "watt": 3647,
+                "miner-mode": 0,
+                "chain": [{"temp_chip": [46, 48, 255]}],
+            }]},
+        )
+        self.assertAlmostEqual(result["hashrate"], 186.43327)
+        self.assertAlmostEqual(result["avg_hashrate"], 175.81969)
+        self.assertEqual(result["temp"], 48.0)
+        self.assertEqual(result["power"], 3647.0)
+        self.assertEqual(result["observed_work_mode"], 0)
+        self.assertNotIn("state", result)
+
     def test_all_missing_fields_remain_unknown(self):
         result = normalize_cgi_telemetry(
             summary_payload={},

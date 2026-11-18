@@ -88,6 +88,8 @@ class FixtureAnalysisTests(unittest.TestCase):
             result["metrics"]["cgi_minus_cgminer_hashrate_ths"], 1.5
         )
         self.assertEqual(result["metrics"]["cgi_avg_hashrate_ths"], 230.5)
+        self.assertEqual(result["metrics"]["cgi_rate_unit_status"], "explicit_scale")
+        self.assertEqual(result["metrics"]["cgi_stats_entries"], 1)
         self.assertEqual(result["metrics"]["cgi_power_w"], 3510)
         self.assertEqual(result["metrics"]["cgi_max_chip_temp_c"], 72)
         self.assertFalse(result["compatibility_verified"])
@@ -164,6 +166,83 @@ class FixtureAnalysisTests(unittest.TestCase):
         result = analysis.analyze_fixture(fixture)
         self.assertEqual(result["model_evidence"], "different_or_unsupported")
         self.assertFalse(result["compatibility_verified"])
+
+    def test_real_t21_paused_and_mining_fixtures_are_distinct(self):
+        # Physical-device observed response shapes, recreated without
+        # exporting actual snapshots or customer/account information.
+        paused = sample_fixture("T21")
+        paused["http_system_info"]["sanitized_json"] = {
+            "minertype": "Antminer T21",
+        }
+        paused["http_cgi_diagnostics"]["/cgi-bin/miner_type.cgi"][
+            "sanitized_json"
+        ] = {"miner_type": "Antminer T21"}
+        paused["cgminer"]["summary"]["data"]["SUMMARY"][0].update({
+            "GHS 5s": 0.0, "GHS av": 0.0,
+        })
+        paused["http_cgi_diagnostics"]["/cgi-bin/summary.cgi"][
+            "sanitized_json"
+        ] = {"SUMMARY": [{
+            "rate_5s": 0.0,
+            "rate_avg": 0.0,
+            "rate_unit": "/s",
+        }]}
+        paused["http_cgi_diagnostics"]["/cgi-bin/stats.cgi"][
+            "sanitized_json"
+        ] = {"STATS": []}
+
+        paused_result = analysis.analyze_fixture(paused)
+        self.assertEqual(paused_result["model_evidence"], "matches_expected")
+        self.assertEqual(
+            paused_result["metrics"]["cgi_rate_unit_status"],
+            "suffix_only_scale_unknown",
+        )
+        self.assertEqual(paused_result["metrics"]["cgi_stats_entries"], 0)
+        self.assertEqual(paused_result["metrics"]["cgminer_hashrate_ths"], 0)
+        self.assertIsNone(paused_result["metrics"]["cgi_hashrate_ths"])
+        self.assertIsNone(paused_result["metrics"]["cgi_minus_cgminer_hashrate_ths"])
+        self.assertFalse(paused_result["compatibility_verified"])
+        self.assertNotIn("state", paused_result)
+
+        mining = sample_fixture("T21")
+        mining["http_system_info"]["sanitized_json"] = {
+            "minertype": "Antminer T21",
+        }
+        mining["http_cgi_diagnostics"]["/cgi-bin/miner_type.cgi"][
+            "sanitized_json"
+        ] = {"miner_type": "Antminer T21"}
+        mining["cgminer"]["summary"]["data"]["SUMMARY"][0].update({
+            "GHS 5s": 188903.39, "GHS av": 174066.79,
+        })
+        mining["http_cgi_diagnostics"]["/cgi-bin/summary.cgi"][
+            "sanitized_json"
+        ] = {"SUMMARY": [{
+            "rate_5s": 186433.27,
+            "rate_avg": 175819.69,
+            "rate_unit": "GH/s",
+        }]}
+        mining["http_cgi_diagnostics"]["/cgi-bin/stats.cgi"][
+            "sanitized_json"
+        ] = {"STATS": [{
+            "watt": 3647,
+            "miner-mode": 0,
+            "chain": [{"temp_chip": [46, 48, 255]}],
+        }]}
+
+        active_result = analysis.analyze_fixture(mining)
+        self.assertEqual(active_result["model_evidence"], "matches_expected")
+        self.assertEqual(
+            active_result["metrics"]["cgi_rate_unit_status"],
+            "explicit_scale",
+        )
+        self.assertEqual(active_result["metrics"]["cgi_stats_entries"], 1)
+        self.assertAlmostEqual(
+            active_result["metrics"]["cgi_hashrate_ths"], 186.4333, places=4
+        )
+        self.assertEqual(active_result["metrics"]["cgi_max_chip_temp_c"], 48)
+        self.assertEqual(active_result["metrics"]["cgi_power_w"], 3647)
+        self.assertFalse(active_result["compatibility_verified"])
+        self.assertNotIn("state", active_result)
 
     def test_cli_accepts_private_fixture_and_prints_safe_summary(self):
         with tempfile.TemporaryDirectory() as folder:

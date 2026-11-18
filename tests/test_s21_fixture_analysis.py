@@ -133,12 +133,37 @@ class FixtureAnalysisTests(unittest.TestCase):
         for changed in (
             {"schema_version": 2},
             {"capture_mode": "active_test"},
-            {"expected_model": "T21"},
+            {"expected_model": "S19"},
         ):
             fixture = sample_fixture()
             fixture.update(changed)
             with self.assertRaises(ValueError):
                 analysis.analyze_fixture(fixture)
+
+    def test_realistic_t21_legacy_baseline_offline(self):
+        fixture = sample_fixture("T21")
+        # A legacy stock T21 can expose the model in get_system_info
+        # while lacking the newer read-only CGI endpoint.
+        fixture["http_system_info"]["sanitized_json"] = {
+            "minertype": "Antminer T21",
+            "system_filesystem_version": "LEGACY-PRIVATE-VERSION",
+        }
+        fixture["http_cgi_diagnostics"] = {}
+
+        report = analysis.analyze_fixture(fixture)
+        self.assertEqual(report["expected_model"], "T21")
+        self.assertEqual(report["model_evidence"], "matches_expected")
+        self.assertEqual(report["metrics"]["cgminer_hashrate_ths"], 231.0)
+        self.assertIsNone(report["metrics"]["cgi_hashrate_ths"])
+        self.assertFalse(report["source_available"]["cgi_stats"])
+        self.assertFalse(report["compatibility_verified"])
+        self.assertNotIn("LEGACY-PRIVATE-VERSION", json.dumps(report))
+
+    def test_mislabeled_t21_fixture_cannot_claim_s21_compatibility(self):
+        fixture = sample_fixture("T21")
+        result = analysis.analyze_fixture(fixture)
+        self.assertEqual(result["model_evidence"], "different_or_unsupported")
+        self.assertFalse(result["compatibility_verified"])
 
     def test_cli_accepts_private_fixture_and_prints_safe_summary(self):
         with tempfile.TemporaryDirectory() as folder:

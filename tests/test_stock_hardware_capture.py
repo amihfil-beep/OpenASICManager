@@ -135,6 +135,29 @@ class StockHardwareCaptureTests(unittest.TestCase):
         self.assertEqual(stats["chain"][0]["sn"], "REDACTED")
         self.assertNotIn("SECRET-DEVICE", json.dumps(sanitized))
 
+    def test_t21_baseline_capture_uses_same_read_only_allowlist(self):
+        with patch.object(
+            capture,
+            "read_cgminer",
+            return_value={"SUMMARY": [{"GHS 5s": 190000}]},
+        ) as cgminer, patch.object(
+            capture,
+            "capture_system_info",
+            return_value={"authenticated_status": 200},
+        ) as http:
+            fixture = capture.collect_fixture(
+                "10.1.2.3", "T21", "root", "secret-not-saved"
+            )
+        self.assertEqual(fixture["expected_model"], "T21")
+        self.assertEqual(fixture["capture_mode"], "read_only")
+        self.assertEqual(
+            [call.args[1] for call in cgminer.call_args_list],
+            list(capture.CGMINER_COMMANDS),
+        )
+        self.assertEqual(http.call_count, len(capture.HTTP_READ_PATHS))
+        self.assertNotIn("secret-not-saved", json.dumps(fixture))
+        self.assertNotIn("10.1.2.3", json.dumps(fixture))
+
     def test_rate_unit_keeps_only_safe_known_measurements(self):
         for unit in ("GH/s", "TH/s", "MH/s", "PH/s"):
             with self.subTest(unit=unit):

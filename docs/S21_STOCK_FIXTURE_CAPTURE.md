@@ -168,3 +168,40 @@ not simultaneous, and a miner may be ramping up or cooling down.
 The standalone analyzer is not wired into production monitoring or
 control dispatch. The release gate still requires reviewed real
 S21/S21 Pro stock-firmware captures and operator-approved action tests.
+
+## Read-only stock T21 baseline (issue #118)
+
+The same capture/analyzer tools can now take `--model T21`. This
+allows us to collect a real baseline from one existing **Bitmain stock
+firmware T21** before comparing against S21 and S21 Pro. A device
+running Awesome / AnthillOS must **not** be used as the stock baseline.
+
+Only execute this on one specifically selected ASIC; use the existing
+firmware selection shown in the inventory and avoid any group action.
+No app restart, miner pause/resume/reboot, schedule change, firmware
+flash, database write, or credential export is needed.
+
+Run from the development checkout on the admin server:
+
+    cd /root/projects/openasicmanager
+    /opt/openasicmanager/venv/bin/python scripts/capture-stock-hardware-fixture.py --model T21
+
+Enter the private IPv4 address of the selected stock T21 at the
+interactive prompt. HTTP Digest username and password are prompted
+separately (hidden password input); omit the password to skip
+authenticated CGI rather than placing a secret in a shell command.
+The script uses only CGMiner read-only commands and allowlisted
+HTTP GET CGI endpoints. The capture is saved locally with mode 0600
+under /root/openasicmanager-hardware-fixtures, outside Git.
+
+After manually reviewing the sanitized JSON for unexpected device
+identifiers or confidential information, run:
+
+    cd /root/projects/openasicmanager
+    /opt/openasicmanager/venv/bin/python scripts/analyze-stock-hardware-fixture.py "$(find /root/openasicmanager-hardware-fixtures -maxdepth 1 -name 't21_stock_*.json' -type f | sort | tail -n 1)"
+
+The analyzer intentionally marks `compatibility_verified=false`. An
+actual T21 baseline confirms which legacy fields our own stock T21
+exposes; it is **not evidence** that S21 and S21 Pro have identical
+firmware APIs. Separate real captures and controlled hardware tests
+remain necessary for both S21 models.

@@ -37,7 +37,7 @@ def _number(value, *, positive=False):
         return None
     if not math.isfinite(number):
         return None
-    if number <= 0 if positive else number < 0:
+    if (positive and number <= 0) or (not positive and number < 0):
         return None
     return number
 
@@ -63,9 +63,10 @@ def _chip_temperature(stats):
             continue
         for reading in sensors:
             value = _number(reading, positive=True)
-            # Reject common missing/sentinel readings such as 0 or 255.
-            # No fallback to ambient temperature (different meaning).
-            if value is not None and value < 125.0:
+            # Reject missing/sentinel readings such as 0 or 255.
+            # Preserve extremely high readings for safety review;
+            # do not silently drop temperatures above 125 C.
+            if value is not None and value < 200.0:
                 readings.append(value)
     return max(readings) if readings else None
 
@@ -90,9 +91,11 @@ def _active_pool(payload):
     for pool in pools:
         if not isinstance(pool, dict):
             continue
-        if str(pool.get("status", "")).casefold() != "alive":
+        if str(
+            pool.get("status", pool.get("Status", ""))
+        ).casefold() != "alive":
             continue
-        url = pool.get("url")
+        url = pool.get("url", pool.get("URL"))
         if isinstance(url, str) and url.strip():
             return url.strip()
     return None

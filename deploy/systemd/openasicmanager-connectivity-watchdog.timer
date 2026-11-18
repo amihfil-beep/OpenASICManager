@@ -1,0 +1,12 @@
+[Unit]
+Description=Check OpenASICManager VPN and farm connectivity every 30 seconds
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=false
+Unit=openasicmanager-connectivity-watchdog.service
+
+[Install]
+WantedBy=timers.target

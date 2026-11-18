@@ -11,6 +11,8 @@ import socket
 import requests
 from requests.auth import HTTPDigestAuth
 
+from drivers.bitmain_models import stock_model_from_responses
+
 from config import (
     BITMAIN_USERNAME,
     BITMAIN_PASSWORD,
@@ -163,15 +165,19 @@ def stock_status(miner):
             stats = item
             break
 
-    model = "Antminer"
+    # On different Bitmain releases the model may appear in a
+    # later STATS entry rather than at index zero. Do not overwrite
+    # a previously identified model with generic "Antminer".
+    try:
+        cached_model = miner["model"]
+    except (KeyError, IndexError, TypeError):
+        cached_model = None
 
-    if stats_items:
-
-        model = (
-            stats_items[0]
-            .get("Type")
-            or model
-        )
+    model = (
+        stock_model_from_responses(stats_items=stats_items)
+        or cached_model
+        or "Antminer"
+    )
 
     pools = (
         pools_data.get(

@@ -412,59 +412,61 @@ def detect_awesome(ip):
 
 
 
-def detect_stock(ip):
+STOCK_CGI_READ_PATHS = (
+    "/cgi-bin/get_system_info.cgi",
+    "/cgi-bin/miner_type.cgi",
+)
+
+
+def read_stock_cgi_info(ip, path):
+    """Get only explicitly allowlisted identity data; never write."""
+    if path not in STOCK_CGI_READ_PATHS:
+        raise ValueError("Unsupported read-only stock CGI path")
 
     try:
-
         response = requests.get(
-            (
-                f"http://{ip}"
-                "/cgi-bin/"
-                "get_system_info.cgi"
-            ),
-
+            f"http://{ip}{path}",
             auth=HTTPDigestAuth(
                 STOCK_USER,
                 STOCK_PASSWORD,
             ),
-
             timeout=HTTP_TIMEOUT,
+            allow_redirects=False,
         )
-
-    except Exception:
-
-        return None
-
-
-    if response.status_code != 200:
-
-        return None
-
-
-    try:
-
+        if response.status_code != 200:
+            return None
         data = response.json()
-
-    except Exception:
-
+    except (requests.RequestException, ValueError, TypeError):
         return None
 
-
-    if not isinstance(
-        data,
-        dict,
-    ):
-
-        return None
+    return data if isinstance(data, dict) else None
 
 
-    # Older firmware exposes minertype in system info; newer
-    # Bitmain CGI examples may omit it. A read-only CGMiner
-    # stats query is an alternative, but we never guess a model
-    # from the firmware version string.
-    model = stock_model_from_responses(system_info=data)
+def detect_stock(ip):
+    system_info = (
+        read_stock_cgi_info(
+            ip, "/cgi-bin/get_system_info.cgi"
+        )
+        or {}
+    )
+    model = stock_model_from_responses(system_info=system_info)
+    type_info = {}
 
     if not model:
+        # A newer Bitmain firmware can omit minertype in system info.
+        # The official miner_type.cgi read-only endpoint provides the
+        # explicit miner_type and fw_version fields.
+        type_info = (
+            read_stock_cgi_info(
+                ip, "/cgi-bin/miner_type.cgi"
+            )
+            or {}
+        )
+        model = stock_model_from_responses(system_info=type_info)
+
+    if not model:
+        # Keep existing 4028 compatibility as the last read-only
+        # model source. Never infer a model from firmware filenames.
         stats_data = cgminer_query(ip, "stats")
         model = stock_model_from_responses(
             stats_items=(
@@ -482,15 +484,11 @@ def detect_stock(ip):
         "driver": "bitmain_stock",
         "type": "Bitmain Stock",
         "model": model,
-        "firmware":
-            data.get(
-                "system_filesystem_version"
-            ),
-        "signature":
-            (
-                "CGMiner 4028 + "
-                "Bitmain system API"
-            ),
+        "firmware": (
+            system_info.get("system_filesystem_version")
+            or type_info.get("fw_version")
+        ),
+        "signature": "CGMiner 4028 + Bitmain system API",
     }
 
 
